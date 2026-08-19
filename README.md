@@ -1,25 +1,16 @@
 # real search
 
-Personal metasearch you run yourself. The UI is Next.js; search backends stay behind it so the browser never talks to them directly.
+Personal metasearch you run yourself. The UI is Next.js; backends stay behind it. Web search is always over Tor. The toggle is **Web vs Peer to peer**, not Tor vs clearnet.
 
 ## Design
 
-Tor is the **transport**, not a mode. Outbound SearXNG fetches should always go through a Tor daemon (SOCKS) so upstream engines see a Tor exit, not your IP. The Next.js app and SearXNG stay on the local Docker network.
+- **Web** — [SearXNG](https://docs.searxng.org/) with outbound fetches through a local Tor SOCKS proxy (`socks5h`). Engines: DuckDuckGo, Brave, Wikipedia, Wikidata.
+- **Peer to peer** — [YaCy](https://yacy.net/) as a **Robinson private peer** (no public DHT). Its web crawler follows links from `yacy/seeds.txt` into a local index. Search uses `/yacysearch.json?resource=local`.
+- **Qdrant** — project database (`pages` collection, 384-d `content` vectors) for later embeddings/ML. Not used for search yet. No Postgres.
 
-The UI toggle is **peer-to-peer**, not Tor vs “regular”:
+A later always-on public/cloud partner is leaving Robinson (`freeworld` / public cluster), not a new search API. Python that embeds YaCy crawls into Qdrant is the next slice.
 
-- **Web** — SearXNG over Tor
-- **Web + P2P** — same Tor path, plus [YaCy](https://yacy.net/) results merged in
-
-Do not make clearnet-vs-Tor the main switch. A fast clearnet path can exist later as an advanced/fallback option, not the default. YaCy peering is its own network; routing YaCy itself through Tor is optional and slower.
-
-SearXNG engines that CAPTCHA or block Tor exits should be dropped in favor of a Tor-tolerant set (for example DuckDuckGo, Brave, Wikipedia, onion indexes such as Ahmia).
-
-## Current status (v1)
-
-There is **no Tor daemon yet**, and YaCy is not wired. Docker runs three services: the web app, [SearXNG](https://docs.searxng.org/), and Valkey.
-
-The UI still labels the toggle **Standard / Private**. Standard is live SearXNG on clearnet. Private is a stub that shows a “not wired yet” banner. Both labels should become **Web / Web + P2P** when Tor and YaCy land.
+Expect **~4GB+ RAM**.
 
 ## Run
 
@@ -28,14 +19,67 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Only the Next.js app is published (port 3000). SearXNG stays on the Docker network.
+Open [http://localhost:3000](http://localhost:3000). Only the Next.js app is published (port 3000).
+
+Tor needs a minute to bootstrap. YaCy is a JVM process and is slower; peer-to-peer results stay empty until the seed crawl has pages. Enter submits a query. The top-right switch is peer-to-peer (off-white Web theme / black P2P theme). The Iron Man control is decorative.
+
+## Environment (`.env`)
+
+| Variable | Purpose |
+| --- | --- |
+| `SEARXNG_SECRET` | SearXNG secret key. Change it. |
+| `YACY_ADMIN_USER` | YaCy admin user (default `admin`) |
+| `YACY_ADMIN_PASSWORD` | YaCy admin password (image default is `docker` — change it) |
+| `YACY_RESOURCE` | `local` now; `global` later if you leave Robinson |
+
+Crawler start URLs: [yacy/seeds.txt](yacy/seeds.txt). Keep the list small. Depth and page caps are in [yacy/init.sh](yacy/init.sh).
+
+## Services
+
+| Service | Role | Host ports |
+| --- | --- | --- |
+| `web` | Next.js UI + `/api/search` | `3000` |
+| `searxng` | Web metasearch | none |
+| `tor` | SOCKS for SearXNG outbound | none (`9050` internal) |
+| `valkey` | SearXNG cache | none |
+| `yacy` | Robinson index + crawler | none |
+| `yacy-init` | Robinson flags + seed crawls | — |
+| `qdrant` | Vector DB | none (`6333` internal) |
+| `qdrant-init` | Creates `pages` collection | — |
 
 ## Layout
 
 ```
-web/                 Next.js App Router UI and /api/search
-searxng/settings.yml JSON API enabled
-docker-compose.yml   web + searxng + valkey
+web/                 Next.js UI and /api/search
+searxng/settings.yml JSON API + Tor outgoing proxy
+tor/                 Tor SOCKS daemon (not published)
+yacy/                Robinson init + crawler seeds
+qdrant/              pages collection init
+docker-compose.yml
 ```
 
-Search providers live in `web/lib/search/`. That is where the Tor SOCKS client and YaCy merge should plug in, along with a Python API, Postgres, and ranking/ML.
+## Security
+
+**What Web + Tor protects**
+
+- Upstream search engines see a Tor exit, not your home IP, for SearXNG’s outbound requests.
+- `socks5h` keeps DNS for those fetches inside Tor.
+
+**What it does not protect**
+
+- Clicking a result uses your normal browser and your real IP. This is not Tor Browser.
+- Your machine still sees every query (Next.js, SearXNG, Valkey, history, localStorage).
+- Tor exit nodes see destinations (and the query if an engine is plain HTTP).
+
+**Ports**
+
+- Do not publish Tor `9050`. An open SOCKS port lets others send traffic as your Tor client.
+- Do not publish SearXNG, YaCy (`8090`/`8443`), or Qdrant (`6333`). Qdrant has no auth by default. Change `YACY_ADMIN_PASSWORD` in `.env`.
+
+**Robinson crawler**
+
+- Robinson does not join the public YaCy network. The crawler still uses your real IP toward crawled sites.
+- Seeds and depth are capped on purpose. A wide crawl is noisy.
+- Switching off Robinson later shares index/DHT with strangers. Lock admin auth, TLS, and firewall first.
+
+Do not treat this as anonymous browsing. The Iron Man image is personal-use placeholder art, not branding.

@@ -13,6 +13,20 @@ services:
       timeout: 3s
       retries: 5
 
+  tor:
+    build:
+      context: ./tor
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - tor-data:/var/lib/tor
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9050"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
   searxng:
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
@@ -26,6 +40,8 @@ services:
     depends_on:
       valkey:
         condition: service_healthy
+      tor:
+        condition: service_healthy
     cap_drop:
       - ALL
     cap_add:
@@ -33,6 +49,60 @@ services:
       - SETGID
       - SETUID
       - DAC_OVERRIDE
+
+  yacy:
+    image: docker.io/yacy/yacy_search_server:latest
+    restart: unless-stopped
+    environment:
+      - YACY_NETWORK=robinson
+    volumes:
+      - yacy-data:/opt/yacy_search_server/DATA
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8090'"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+  yacy-init:
+    image: docker.io/curlimages/curl:8.11.1
+    restart: on-failure
+    user: "0"
+    environment:
+      - YACY_URL=http://yacy:8090
+      - YACY_ADMIN_USER=${YACY_ADMIN_USER:-admin}
+      - YACY_ADMIN_PASSWORD=${YACY_ADMIN_PASSWORD:-docker}
+      - SEEDS_FILE=/seeds.txt
+    volumes:
+      - ./yacy/init.sh:/init.sh:ro
+      - ./yacy/seeds.txt:/seeds.txt:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    depends_on:
+      yacy:
+        condition: service_healthy
+
+  qdrant:
+    image: docker.io/qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  qdrant-init:
+    image: docker.io/curlimages/curl:8.11.1
+    restart: on-failure
+    user: "0"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+      - ./qdrant/init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    depends_on:
+      - qdrant
 
   web:
     build:
@@ -43,8 +113,16 @@ services:
       - "3000:3000"
     environment:
       - SEARXNG_URL=http://searxng:8080
+      - YACY_URL=http://yacy:8090
+      - YACY_RESOURCE=${YACY_RESOURCE:-local}
+      - QDRANT_URL=http://qdrant:6333
     depends_on:
       - searxng
+      - yacy
+      - qdrant
 
 volumes:
   valkey-data:
+  tor-data:
+  yacy-data:
+  qdrant-data:

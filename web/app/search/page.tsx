@@ -1,9 +1,7 @@
 "use client";
 
-import { PrivateBanner } from "@/components/PrivateBanner";
 import { SearchBar } from "@/components/SearchBar";
 import { SearchResults } from "@/components/SearchResults";
-import { Wordmark } from "@/components/Wordmark";
 import { parseMode } from "@/lib/mode";
 import type { SearchMode, SearchResponse } from "@/lib/search/types";
 import Link from "next/link";
@@ -70,14 +68,13 @@ function QueryResults({
 
   return (
     <div className="flex flex-col gap-6">
-      {mode === "private" ? <PrivateBanner message={data?.message} /> : null}
       {data?.status === "error" ? (
-        <p className="text-sm text-red-300">{data.message}</p>
+        <p className="text-sm text-muted">{data.message}</p>
       ) : null}
       {data && data.status !== "error" ? (
         <SearchResults results={data.results} />
       ) : null}
-      {data?.status === "ok" ? (
+      {data?.status === "ok" && data.results.length > 0 ? (
         <nav className="flex items-center gap-4 pt-4 text-sm">
           {pageno > 1 ? (
             <Link
@@ -88,14 +85,12 @@ function QueryResults({
             </Link>
           ) : null}
           <span className="text-muted">Page {pageno}</span>
-          {data.results.length > 0 ? (
-            <Link
-              href={pageHref(q, mode, pageno + 1)}
-              className="text-muted hover:text-foreground"
-            >
-              Next
-            </Link>
-          ) : null}
+          <Link
+            href={pageHref(q, mode, pageno + 1)}
+            className="text-muted hover:text-foreground"
+          >
+            Next
+          </Link>
         </nav>
       ) : null}
     </div>
@@ -109,24 +104,14 @@ function SearchPageContent() {
   const pageno = Math.max(1, Number(params.get("pageno") ?? 1) || 1);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="border-b border-border px-4 py-4 sm:px-8">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 sm:flex-row sm:items-center">
-          <Wordmark compact />
-          <div className="flex-1">
-            <SearchBar key={`${q}|${mode}`} initialQuery={q} initialMode={mode} compact />
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-8">
-        {!q ? (
-          <p className="text-muted">Type a query to search.</p>
-        ) : (
-          <QueryResults key={`${q}|${mode}|${pageno}`} q={q} mode={mode} pageno={pageno} />
-        )}
-      </main>
-    </div>
+    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-8 px-4 py-8">
+      <SearchBar key={`${q}|${mode}`} initialQuery={q} initialMode={mode} />
+      {!q ? (
+        <p className="text-muted">Type a query to search.</p>
+      ) : (
+        <QueryResults key={`${q}|${mode}|${pageno}`} q={q} mode={mode} pageno={pageno} />
+      )}
+    </main>
   );
 }
 

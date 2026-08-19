@@ -1,0 +1,4 @@
+# Small seed list. The crawler follows links from these URLs (capped depth/pages).
+# Crawled sites see your real IP, not Tor.
+https://en.wikipedia.org/wiki/Main_Page
+https://www.wikidata.org/wiki/Wikidata:Main_Page

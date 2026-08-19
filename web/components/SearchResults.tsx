@@ -28,7 +28,7 @@ export function SearchResults({ results }: SearchResultsProps) {
             className="group block"
           >
             <p className="text-xs text-muted">{hostname(result.url)}</p>
-            <h2 className="mt-1 text-lg font-medium text-standard group-hover:underline">
+            <h2 className="mt-1 text-lg font-medium text-foreground group-hover:underline">
               {result.title}
             </h2>
             {result.snippet ? (

@@ -1,6 +1,5 @@
 "use client";
 
-import { storeMode } from "@/lib/mode";
 import type { SearchMode } from "@/lib/search/types";
 
 type ModeToggleProps = {
@@ -9,41 +8,31 @@ type ModeToggleProps = {
 };
 
 export function ModeToggle({ mode, onChange }: ModeToggleProps) {
-  function select(next: SearchMode) {
-    storeMode(next);
-    onChange(next);
-  }
+  const p2p = mode === "p2p";
 
   return (
-    <div
-      className="inline-flex rounded-full border border-border bg-surface p-1"
-      role="group"
-      aria-label="Search mode"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={p2p}
+      aria-label="Peer to peer"
+      onClick={() => onChange(p2p ? "web" : "p2p")}
+      className="flex items-center gap-2 text-foreground"
     >
-      <button
-        type="button"
-        onClick={() => select("standard")}
-        className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-          mode === "standard"
-            ? "bg-standard text-background"
-            : "text-muted hover:text-foreground"
+      <span className="text-xs uppercase tracking-[0.14em]">Peer to peer</span>
+      <span
+        className={`relative h-6 w-10 rounded-full border border-foreground ${
+          p2p ? "bg-foreground" : "bg-transparent"
         }`}
-        aria-pressed={mode === "standard"}
       >
-        Standard
-      </button>
-      <button
-        type="button"
-        onClick={() => select("private")}
-        className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-          mode === "private"
-            ? "bg-private text-background"
-            : "text-muted hover:text-foreground"
-        }`}
-        aria-pressed={mode === "private"}
-      >
-        Private
-      </button>
-    </div>
+        <span
+          className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+            p2p
+              ? "right-0.5 bg-background"
+              : "left-0.5 bg-foreground"
+          }`}
+        />
+      </span>
+    </button>
   );
 }

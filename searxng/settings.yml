@@ -1,7 +1,13 @@
-# SearXNG settings — JSON API enabled for the Next.js frontend.
+# SearXNG settings — JSON API, outbound via Tor SOCKS.
 # https://docs.searxng.org/admin/settings/settings.html
 
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      - duckduckgo
+      - brave
+      - wikipedia
+      - wikidata
 
 general:
   instance_name: "real search"
@@ -25,3 +31,11 @@ server:
 valkey:
   # Overwritten by ${SEARXNG_VALKEY_URL}
   url: valkey://valkey:6379/0
+
+outgoing:
+  request_timeout: 15.0
+  max_request_timeout: 30.0
+  extra_proxy_timeout: 10.0
+  using_tor_proxy: true
+  proxies:
+    all://: socks5h://tor:9050

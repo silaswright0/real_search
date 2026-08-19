@@ -1,4 +1,4 @@
-export type SearchMode = "standard" | "private";
+export type SearchMode = "web" | "p2p";
 
 export type SearchQuery = {
   q: string;

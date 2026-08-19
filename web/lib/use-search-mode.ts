@@ -17,7 +17,7 @@ export function useSearchMode(override?: SearchMode): [SearchMode, (mode: Search
   const stored = useSyncExternalStore(
     subscribeMode,
     readStoredMode,
-    (): SearchMode => "standard",
+    (): SearchMode => "web",
   );
   const mode = override ?? stored;
   const setMode = useCallback((next: SearchMode) => {
