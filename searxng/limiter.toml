@@ -1,0 +1,13 @@
+# Allow the Next.js container to call the JSON API on the Docker network
+# if the limiter is enabled later.
+# https://docs.searxng.org/admin/src/searxng.botdetection.html
+
+[botdetection.ip_lists]
+pass_ip = [
+  '10.0.0.0/8',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+]
+
+[botdetection.ip_limit]
+link_token = false

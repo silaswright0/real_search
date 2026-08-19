@@ -1,0 +1,27 @@
+# SearXNG settings — JSON API enabled for the Next.js frontend.
+# https://docs.searxng.org/admin/settings/settings.html
+
+use_default_settings: true
+
+general:
+  instance_name: "real search"
+  enable_metrics: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+server:
+  # Overwritten by ${SEARXNG_SECRET}
+  secret_key: "dev-only-change-me-real-search"
+  limiter: false
+  image_proxy: true
+  method: "GET"
+
+valkey:
+  # Overwritten by ${SEARXNG_VALKEY_URL}
+  url: valkey://valkey:6379/0
