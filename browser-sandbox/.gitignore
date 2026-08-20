@@ -1,0 +1,8 @@
+*
+!.gitignore
+!Dockerfile
+!entrypoint.sh
+!policies.json
+!autoconfig.js
+!firefox.cfg
+!user.js

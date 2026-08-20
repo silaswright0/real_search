@@ -33,7 +33,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         <IronManButton />
       </header>
       <div className="h-px w-full bg-foreground" aria-hidden="true" />
-      {children}
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }
@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-full flex-col">
           <header className="h-14" />
           <div className="h-px w-full bg-foreground" aria-hidden="true" />
-          {children}
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         </div>
       }
     >

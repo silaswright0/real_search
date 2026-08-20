@@ -1,0 +1,73 @@
+{
+  "policies": {
+    "BlockAboutConfig": true,
+    "BlockAboutProfiles": true,
+    "BlockAboutSupport": true,
+    "DisableAppUpdate": true,
+    "DisableBuiltinPDFViewer": true,
+    "DisableDeveloperTools": true,
+    "DisableDownloads": true,
+    "DisableFilePicker": true,
+    "DisableFirefoxAccounts": true,
+    "DisableFirefoxScreenshots": true,
+    "DisableFirefoxStudies": true,
+    "DisableForgetButton": true,
+    "DisableFormHistory": true,
+    "DisableMasterPasswordCreation": true,
+    "DisablePocket": true,
+    "DisablePrivateBrowsing": false,
+    "DisableProfileImport": true,
+    "DisableSafeMode": true,
+    "DisableSetDesktopBackground": true,
+    "DisableSystemAddonUpdate": true,
+    "DisableTelemetry": true,
+    "DisplayBookmarksToolbar": "never",
+    "DisplayMenuBar": "never",
+    "DontCheckDefaultBrowser": true,
+    "DownloadDirectory": "/nonexistent",
+    "DefaultDownloadDirectory": "/nonexistent",
+    "PromptForDownloadLocation": false,
+    "HardwareAcceleration": false,
+    "NoDefaultBookmarks": true,
+    "OfferToSaveLogins": false,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "PasswordManagerEnabled": false,
+    "PDFjs": {
+      "Enabled": false,
+      "EnablePermissions": false
+    },
+    "SanitizeOnShutdown": {
+      "Cache": true,
+      "Cookies": true,
+      "Downloads": true,
+      "FormData": true,
+      "History": true,
+      "Sessions": true,
+      "SiteSettings": true,
+      "Locked": true
+    },
+    "Proxy": {
+      "Mode": "manual",
+      "Locked": true,
+      "HTTPProxy": "",
+      "HTTPSProxy": "",
+      "FTPProxy": "",
+      "SOCKSProxy": "127.0.0.1:9050",
+      "SOCKSVersion": 5,
+      "UseProxyForDNS": true,
+      "Passthrough": "127.0.0.1"
+    },
+    "Preferences": {
+      "browser.download.useDownloadDir": { "Value": true, "Status": "locked" },
+      "browser.download.folderList": { "Value": 2, "Status": "locked" },
+      "browser.helperApps.neverAsk.saveToDisk": { "Value": "", "Status": "locked" },
+      "media.peerconnection.enabled": { "Value": false, "Status": "locked" },
+      "network.file.disable_unc_paths": { "Value": true, "Status": "locked" },
+      "network.proxy.socks_remote_dns": { "Value": true, "Status": "locked" },
+      "pdfjs.disabled": { "Value": true, "Status": "locked" },
+      "privacy.resistFingerprinting": { "Value": true, "Status": "locked" },
+      "privacy.trackingprotection.enabled": { "Value": true, "Status": "locked" }
+    }
+  }
+}

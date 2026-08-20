@@ -1,0 +1,5 @@
+*
+!.gitignore
+!Dockerfile
+!main.py
+!requirements.txt

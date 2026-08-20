@@ -1,85 +1,79 @@
 # real search
 
-Personal metasearch you run yourself. The UI is Next.js; backends stay behind it. Web search is always over Tor. The toggle is **Web vs Peer to peer**, not Tor vs clearnet.
+Personal metasearch. Queries go **SearXNG → Tor SOCKS5h**. Result clicks spawn an ephemeral Firefox sandbox with no direct internet; the only egress is Tor. The guest is shown over noVNC. The UI is bound to **127.0.0.1:3000** only.
+
+Toggle is **Web vs Peer to peer**.
 
 ## Design
 
-- **Web** — [SearXNG](https://docs.searxng.org/) with outbound fetches through a local Tor SOCKS proxy (`socks5h`). Engines: DuckDuckGo, Brave, Wikipedia, Wikidata.
-- **Peer to peer** — [YaCy](https://yacy.net/) as a **Robinson private peer** (no public DHT). Its web crawler follows links from `yacy/seeds.txt` into a local index. Search uses `/yacysearch.json?resource=local`.
-- **Qdrant** — project database (`pages` collection, 384-d `content` vectors) for later embeddings/ML. Not used for search yet. No Postgres.
+- **Web** — SearXNG through `socks5h://tor:9050` (DuckDuckGo, Brave, Wikipedia, Wikidata).
+- **Peer to peer** — YaCy Robinson (no public DHT). Crawling is removed and YaCy runs on an internal network with no internet gateway.
+- **Qdrant** — `pages` collection for later embeddings; unused for search.
+- **Secure Open** — authenticated `/api/secure-open` → filtered Docker API → disposable Firefox on an **internal** network with Tor → noVNC via the gateway. Sessions require a 15-second viewer heartbeat and expire after 45 seconds without one.
 
-A later always-on public/cloud partner is leaving Robinson (`freeworld` / public cluster), not a new search API. Python that embeds YaCy crawls into Qdrant is the next slice.
+The sandbox runtime is unconditionally **gVisor `runsc`**. Compose performs an early `runsc` smoke test and the broker always requests `runsc`; deployment or session creation fails if the runtime is unavailable. There is no runc or Kata fallback.
 
-Expect **~4GB+ RAM**.
+Expect **~5GB+ RAM** with a sandbox open.
 
 ## Run
 
 ```bash
 cp .env.example .env
+# Set CLICK_BROKER_TOKEN in .env to this output:
+python -c "import secrets; print(secrets.token_hex(32))"
 docker compose up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Only the Next.js app is published (port 3000).
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish `3000` on `0.0.0.0`.
 
-Tor needs a minute to bootstrap. YaCy is a JVM process and is slower; peer-to-peer results stay empty until the seed crawl has pages. Enter submits a query. The top-right switch is peer-to-peer (off-white Web theme / black P2P theme). The Iron Man control is decorative.
+Install and register gVisor (`runsc`) before starting the stack: https://gvisor.dev/docs/user_guide/install/
 
-## Environment (`.env`)
+## Click hop
+
+Titles do not open the host browser. They start `real-search-browser:local`:
+
+1. URL allowlist (http/https, no loopback/private/decimal IPs, no userinfo)
+2. Join **only** `real-search_sandbox` (`internal: true` — no default gateway to the internet)
+3. Firefox SOCKS to `127.0.0.1:9050` (socat to `tor:9050`) and `socks_remote_dns`
+4. iptables OUTPUT defaults to drop, explicitly rejects RFC1918/link-local destinations, and permits only loopback plus the shared Tor daemon
+5. `/tmp` and `/home/sandbox` are ephemeral `noexec,nosuid,nodev` tmpfs mounts
+6. Firefox policies plus an aggressive Arkenfox-style profile disable downloads/PDF.js, WebRTC, WebGL, JIT/Wasm, speculative traffic, sensors, and several fingerprint surfaces
+7. x11vnc enforces `-nosel` at the display boundary, so clipboard isolation does not depend on a noVNC client setting
+8. noVNC is proxied at `/click-broker/...` through **nginx** with an internal broker token
+9. Destroy on End session, Firefox close, or heartbeat expiry
+
+`sockfilter` is the only service with the Docker socket. It is reachable only from `click-broker` on `real-search_sandbox-admin`; it requires the browser image, `runsc`, the internal sandbox network, read-only root, constrained tmpfs mounts, and the expected capabilities.
+
+React Strict Mode does **not** delete the session on remount. The viewer heartbeats every 15 seconds; loss of heartbeat destroys the container after 45 seconds.
+
+## Environment
 
 | Variable | Purpose |
 | --- | --- |
-| `SEARXNG_SECRET` | SearXNG secret key. Change it. |
-| `YACY_ADMIN_USER` | YaCy admin user (default `admin`) |
-| `YACY_ADMIN_PASSWORD` | YaCy admin password (image default is `docker` — change it) |
-| `YACY_RESOURCE` | `local` now; `global` later if you leave Robinson |
-
-Crawler start URLs: [yacy/seeds.txt](yacy/seeds.txt). Keep the list small. Depth and page caps are in [yacy/init.sh](yacy/init.sh).
+| `SEARXNG_SECRET` | SearXNG secret |
+| `YACY_ADMIN_*` | YaCy admin (change from `docker`) |
+| `YACY_RESOURCE` | `local` |
+| `CLICK_BROKER_TOKEN` | Required random service token used by Next.js/nginx to authenticate every broker request |
 
 ## Services
 
 | Service | Role | Host ports |
 | --- | --- | --- |
-| `web` | Next.js UI + `/api/search` | `3000` |
-| `searxng` | Web metasearch | none |
-| `tor` | SOCKS for SearXNG outbound | none (`9050` internal) |
-| `valkey` | SearXNG cache | none |
-| `yacy` | Robinson index + crawler | none |
-| `yacy-init` | Robinson flags + seed crawls | — |
-| `qdrant` | Vector DB | none (`6333` internal) |
-| `qdrant-init` | Creates `pages` collection | — |
-
-## Layout
-
-```
-web/                 Next.js UI and /api/search
-searxng/settings.yml JSON API + Tor outgoing proxy
-tor/                 Tor SOCKS daemon (not published)
-yacy/                Robinson init + crawler seeds
-qdrant/              pages collection init
-docker-compose.yml
-```
+| `gateway` | nginx: Next.js + WebSocket to broker | `127.0.0.1:3000` |
+| `web` | Next.js | none |
+| `searxng` | Metasearch | none |
+| `tor` | SOCKS (default + sandbox nets) | none |
+| `sockfilter` | Allowlisted Docker API | none |
+| `click-broker` | Spawn/kill/proxy VNC | none |
+| `yacy` | Robinson index | none |
+| `qdrant` | Vector DB | none |
 
 ## Security
 
-**What Web + Tor protects**
+**Search:** engines see a Tor exit. **Click (Secure Open):** the site sees the sandbox’s Tor exit, not Chrome on the host.
 
-- Upstream search engines see a Tor exit, not your home IP, for SearXNG’s outbound requests.
-- `socks5h` keeps DNS for those fetches inside Tor.
+Still true: local apps see queries; Tor exits see destinations; query+click timing can correlate; using one Tor daemon does not guarantee one circuit; do not log into personal accounts in the sandbox; Firefox ESR plus hardened preferences is not Tor Browser.
 
-**What it does not protect**
+Do not publish Tor `9050`, YaCy, Qdrant, or noVNC. Do not expose the UI beyond loopback without adding auth — an open UI is a Tor browser farm.
 
-- Clicking a result uses your normal browser and your real IP. This is not Tor Browser.
-- Your machine still sees every query (Next.js, SearXNG, Valkey, history, localStorage).
-- Tor exit nodes see destinations (and the query if an engine is plain HTTP).
-
-**Ports**
-
-- Do not publish Tor `9050`. An open SOCKS port lets others send traffic as your Tor client.
-- Do not publish SearXNG, YaCy (`8090`/`8443`), or Qdrant (`6333`). Qdrant has no auth by default. Change `YACY_ADMIN_PASSWORD` in `.env`.
-
-**Robinson crawler**
-
-- Robinson does not join the public YaCy network. The crawler still uses your real IP toward crawled sites.
-- Seeds and depth are capped on purpose. A wide crawl is noisy.
-- Switching off Robinson later shares index/DHT with strangers. Lock admin auth, TLS, and firewall first.
-
-Do not treat this as anonymous browsing. The Iron Man image is personal-use placeholder art, not branding.
+Iron Man art is a personal placeholder, not branding.
