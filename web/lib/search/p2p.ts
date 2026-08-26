@@ -43,15 +43,23 @@ function mapItem(item: YacyItem, mode: SearchQuery["mode"]): SearchResult | null
 export const p2pSearchProvider: SearchProvider = {
   async search({ q, mode, pageno }: SearchQuery): Promise<SearchResponse> {
     const url = new URL("/yacysearch.json", yacyBaseUrl());
-    url.searchParams.set("query", q);
-    url.searchParams.set("resource", yacyResource());
-    url.searchParams.set("maximumRecords", String(PAGE_SIZE));
-    url.searchParams.set("startRecord", String((pageno - 1) * PAGE_SIZE));
+    const body = new URLSearchParams({
+      query: q,
+      resource: yacyResource(),
+      maximumRecords: String(PAGE_SIZE),
+      startRecord: String((pageno - 1) * PAGE_SIZE),
+    });
 
     try {
       const response = await fetch(url, {
+        method: "POST",
         cache: "no-store",
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body,
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {

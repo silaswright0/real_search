@@ -4,13 +4,12 @@ import { IronManButton } from "@/components/IronManButton";
 import { ModeToggle } from "@/components/ModeToggle";
 import { useSearchMode } from "@/lib/use-search-mode";
 import type { SearchMode } from "@/lib/search/types";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useSearchMode();
   const pathname = usePathname();
-  const params = useSearchParams();
   const router = useRouter();
 
   useEffect(() => {
@@ -19,9 +18,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   function onModeChange(next: SearchMode) {
     setMode(next);
-    const q = params.get("q")?.trim();
-    if (pathname === "/search" && q) {
-      const nextParams = new URLSearchParams({ q, mode: next });
+    if (pathname === "/search") {
+      const nextParams = new URLSearchParams({ mode: next });
       router.push(`/search?${nextParams.toString()}`);
     }
   }

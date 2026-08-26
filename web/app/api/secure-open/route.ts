@@ -16,9 +16,12 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { url?: string };
     raw = body.url?.trim() ?? "";
-    parsePublicHttpUrl(raw);
-  } catch {
-    return NextResponse.json({ error: "invalid URL" }, { status: 400 });
+    parsePublicHttpUrl(raw, process.env.ALLOW_INSECURE_HTTP === "1");
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "invalid URL" },
+      { status: 400 },
+    );
   }
 
   try {

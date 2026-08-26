@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
+import ipaddress
 import os
 import re
 import secrets
@@ -15,54 +17,55 @@ import docker
 from aiohttp import ClientSession, WSMsgType, web
 from docker.errors import APIError, NotFound
 
-HEARTBEAT_TIMEOUT_SEC = int(os.environ.get("HEARTBEAT_TIMEOUT_SEC", "45"))
+HEARTBEAT_TIMEOUT_SEC = int(os.environ.get("HEARTBEAT_TIMEOUT_SEC", "90"))
 BROWSER_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
 SANDBOX_NETWORK = os.environ.get("SANDBOX_NETWORK", "real-search_sandbox")
 TOR_HOST = os.environ.get("TOR_HOST", "tor")
-SANDBOX_RUNTIME = "runsc"
+SANDBOX_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runc").strip() or "runc"
 BROKER_TOKEN = os.environ.get("CLICK_BROKER_TOKEN", "")
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "3"))
+ALLOW_INSECURE_HTTP = os.environ.get("ALLOW_INSECURE_HTTP", "0") == "1"
+SANDBOX_LABEL = "real-search.sandbox=true"
 
 if len(BROKER_TOKEN) < 32:
     raise RuntimeError("CLICK_BROKER_TOKEN must be at least 32 characters")
+if SANDBOX_RUNTIME not in {"runc", "runsc"}:
+    raise RuntimeError("SANDBOX_RUNTIME must be runc or runsc")
 
-ID_RE = re.compile(r"^[a-f0-9]{16}$")
+ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 docker_client = docker.from_env()
 sessions: dict[str, dict[str, Any]] = {}
 
 
 def _is_private_host(host: str) -> bool:
-    name = host.lower().rstrip(".")
+    name = host.lower().rstrip(".").removeprefix("[").removesuffix("]")
     if name in {"localhost", "127.0.0.1", "0.0.0.0", "::1", "127.1", "::ffff:127.0.0.1"}:
         return True
     if name.endswith(".local") or name.endswith(".internal") or name.endswith(".localhost"):
         return True
-    if name.isdigit():
+    try:
+        address = ipaddress.ip_address(name)
+    except ValueError:
+        address = None
+    if address is not None:
+        return address.version == 6 or not address.is_global
+    if ":" in name or name.isdigit():
         return True
     parts = name.split(".")
     if all(p.isdigit() for p in parts) and 1 <= len(parts) <= 4:
-        first = int(parts[0])
-        second = int(parts[1]) if len(parts) > 1 else 0
-        if first in {0, 10, 127}:
-            return True
-        if first == 192 and second == 168:
-            return True
-        if first == 172 and 16 <= second <= 31:
-            return True
-        if first == 169 and second == 254:
-            return True
-        if first == 100 and 64 <= second <= 127:
-            return True
-    if ":" in name and name.startswith(("fe80:", "fc", "fd", "::ffff:")):
+        return True
+    if all(re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)", part) for part in parts):
         return True
     return False
 
 
 def validate_target_url(raw: str) -> str:
     parsed = urlparse(raw.strip())
-    if parsed.scheme not in {"http", "https"}:
-        raise ValueError("only http/https URLs are allowed")
+    if parsed.scheme != "https" and not (
+        ALLOW_INSECURE_HTTP and parsed.scheme == "http"
+    ):
+        raise ValueError("HTTPS is required")
     if parsed.username or parsed.password:
         raise ValueError("userinfo in URLs is not allowed")
     if not parsed.hostname:
@@ -139,12 +142,15 @@ async def create_session(request: web.Request) -> web.Response:
     except ValueError as exc:
         return web.json_response({"error": str(exc)}, status=400)
 
-    sid = secrets.token_hex(8)
+    sid = secrets.token_hex(16)
+    viewer_token = secrets.token_urlsafe(32)
+    vnc_password = hashlib.sha256(viewer_token.encode()).hexdigest()[:8]
     kwargs: dict[str, Any] = {
         "image": BROWSER_IMAGE,
         "detach": True,
         "auto_remove": True,
         "name": f"click-{sid}",
+        "labels": {"real-search.sandbox": "true"},
         "network": SANDBOX_NETWORK,
         "cap_drop": ["ALL"],
         "cap_add": ["NET_ADMIN"],
@@ -159,6 +165,7 @@ async def create_session(request: web.Request) -> web.Response:
             "TARGET_URL": target,
             "TOR_HOST": TOR_HOST,
             "TOR_PORT": "9050",
+            "VNC_TOKEN": viewer_token,
         },
         "mem_limit": "1g",
         "pids_limit": 256,
@@ -197,7 +204,14 @@ async def create_session(request: web.Request) -> web.Response:
         "last_heartbeat": time.time(),
         "url": target,
     }
-    return web.json_response({"id": sid, "view": f"/view/{sid}"})
+    return web.json_response(
+        {
+            "id": sid,
+            "view": f"/view/{sid}",
+            "viewerToken": viewer_token,
+            "vncPassword": vnc_password,
+        }
+    )
 
 
 def _destroy_sync_container(container_id: str) -> None:
@@ -205,6 +219,15 @@ def _destroy_sync_container(container_id: str) -> None:
         docker_client.containers.get(container_id).remove(force=True)
     except (NotFound, APIError):
         pass
+
+
+def _remove_orphaned_sandboxes() -> None:
+    for container in docker_client.containers.list(
+        all=True,
+        filters={"label": SANDBOX_LABEL},
+    ):
+        if re.fullmatch(r"/?click-[a-f0-9]{32}", container.name):
+            _destroy_sync_container(container.id)
 
 
 async def delete_session(request: web.Request) -> web.Response:
@@ -221,17 +244,6 @@ async def get_session(request: web.Request) -> web.Response:
     if not meta:
         return web.json_response({"error": "not found"}, status=404)
     return web.json_response({"id": sid, "url": meta["url"]})
-
-
-async def heartbeat_session(request: web.Request) -> web.Response:
-    sid = request.match_info["id"]
-    if not ID_RE.match(sid):
-        return web.json_response({"error": "invalid id"}, status=400)
-    meta = sessions.get(sid)
-    if not meta:
-        return web.json_response({"error": "not found"}, status=404)
-    meta["last_heartbeat"] = time.time()
-    return web.json_response({"ok": True})
 
 
 async def proxy_vnc(request: web.Request) -> web.StreamResponse:
@@ -274,12 +286,24 @@ async def proxy_vnc(request: web.Request) -> web.StreamResponse:
 
 
 async def proxy_ws(request: web.Request, ip: str, rest: str) -> web.WebSocketResponse:
+    sid = request.match_info["id"]
+    meta = sessions.get(sid)
+    if not meta:
+        raise web.HTTPNotFound(text="session gone")
     ws_server = web.WebSocketResponse()
     await ws_server.prepare(request)
     path = rest if rest else "websockify"
     url = f"http://{ip}:6080/{path}"
+    if request.query_string:
+        url = f"{url}?{request.query_string}"
     async with ClientSession() as http:
         async with http.ws_connect(url) as ws_client:
+            meta["last_heartbeat"] = time.time()
+
+            async def hold_lease() -> None:
+                while True:
+                    meta["last_heartbeat"] = time.time()
+                    await asyncio.sleep(15)
 
             async def from_client() -> None:
                 async for msg in ws_server:
@@ -300,6 +324,7 @@ async def proxy_ws(request: web.Request, ip: str, rest: str) -> web.WebSocketRes
                         break
 
             tasks = [
+                asyncio.create_task(hold_lease()),
                 asyncio.create_task(from_client()),
                 asyncio.create_task(from_sandbox()),
             ]
@@ -318,6 +343,7 @@ async def reap_sessions(_app: web.Application) -> None:
 
 
 async def reaper_context(app: web.Application):
+    _remove_orphaned_sandboxes()
     task = asyncio.create_task(reap_sessions(app))
     try:
         yield
@@ -333,7 +359,6 @@ def build_app() -> web.Application:
     app.cleanup_ctx.append(reaper_context)
     app.router.add_post("/sessions", create_session)
     app.router.add_get("/sessions/{id}", get_session)
-    app.router.add_post("/sessions/{id}/heartbeat", heartbeat_session)
     app.router.add_delete("/sessions/{id}", delete_session)
     app.router.add_route("*", "/sessions/{id}/vnc", proxy_vnc)
     app.router.add_route("*", "/sessions/{id}/vnc/{tail:.*}", proxy_vnc)

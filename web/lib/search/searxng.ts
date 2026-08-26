@@ -42,14 +42,22 @@ function mapHit(hit: SearxngHit, mode: SearchQuery["mode"]): SearchResult | null
 export const searxngProvider: SearchProvider = {
   async search({ q, mode, pageno }: SearchQuery): Promise<SearchResponse> {
     const url = new URL("/search", searxngBaseUrl());
-    url.searchParams.set("q", q);
-    url.searchParams.set("format", "json");
-    url.searchParams.set("pageno", String(pageno));
+    const body = new URLSearchParams({
+      q,
+      format: "json",
+      pageno: String(pageno),
+    });
 
     try {
       const response = await fetch(url, {
+        method: "POST",
         cache: "no-store",
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body,
+        signal: AbortSignal.timeout(35_000),
       });
 
       if (!response.ok) {

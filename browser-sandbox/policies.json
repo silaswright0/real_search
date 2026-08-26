@@ -56,7 +56,7 @@
       "SOCKSProxy": "127.0.0.1:9050",
       "SOCKSVersion": 5,
       "UseProxyForDNS": true,
-      "Passthrough": "127.0.0.1"
+      "Passthrough": ""
     },
     "Preferences": {
       "browser.download.useDownloadDir": { "Value": true, "Status": "locked" },
@@ -64,7 +64,10 @@
       "browser.helperApps.neverAsk.saveToDisk": { "Value": "", "Status": "locked" },
       "media.peerconnection.enabled": { "Value": false, "Status": "locked" },
       "network.file.disable_unc_paths": { "Value": true, "Status": "locked" },
+      "network.proxy.no_proxies_on": { "Value": "", "Status": "locked" },
       "network.proxy.socks_remote_dns": { "Value": true, "Status": "locked" },
+      "dom.security.https_only_mode": { "Value": true, "Status": "locked" },
+      "dom.security.https_only_mode_pbm": { "Value": true, "Status": "locked" },
       "pdfjs.disabled": { "Value": true, "Status": "locked" },
       "privacy.resistFingerprinting": { "Value": true, "Status": "locked" },
       "privacy.trackingprotection.enabled": { "Value": true, "Status": "locked" }

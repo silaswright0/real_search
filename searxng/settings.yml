@@ -26,7 +26,7 @@ server:
   secret_key: "dev-only-change-me-real-search"
   limiter: false
   image_proxy: false
-  method: "GET"
+  method: "POST"
 
 valkey:
   # Overwritten by ${SEARXNG_VALKEY_URL}

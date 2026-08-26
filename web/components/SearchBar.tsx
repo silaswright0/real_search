@@ -2,18 +2,19 @@
 
 import { storeMode } from "@/lib/mode";
 import { useSearchMode } from "@/lib/use-search-mode";
+import { setActiveQuery, useActiveQuery } from "@/lib/use-active-query";
 import type { SearchMode } from "@/lib/search/types";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 type SearchBarProps = {
-  initialQuery?: string;
   initialMode?: SearchMode;
 };
 
-export function SearchBar({ initialQuery = "", initialMode }: SearchBarProps) {
+export function SearchBar({ initialMode }: SearchBarProps) {
   const router = useRouter();
-  const [query, setQuery] = useState(initialQuery);
+  const activeQuery = useActiveQuery();
+  const [query, setQuery] = useState(activeQuery);
   const [mode] = useSearchMode(initialMode);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -23,7 +24,8 @@ export function SearchBar({ initialQuery = "", initialMode }: SearchBarProps) {
       return;
     }
     storeMode(mode);
-    const params = new URLSearchParams({ q, mode });
+    setActiveQuery(q);
+    const params = new URLSearchParams({ mode });
     router.push(`/search?${params.toString()}`);
   }
 

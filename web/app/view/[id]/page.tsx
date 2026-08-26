@@ -8,20 +8,29 @@ export default function ViewPage() {
   const router = useRouter();
   const id = params.id;
   const [ending, setEnding] = useState(false);
+  const [credentials, setCredentials] = useState<{
+    token: string;
+    password: string;
+  } | null>(null);
+  const [credentialsLoaded, setCredentialsLoaded] = useState(false);
 
   useEffect(() => {
-    if (!id) {
-      return;
-    }
-    const heartbeat = () =>
-      fetch(`/api/secure-open/${id}/heartbeat`, {
-        method: "POST",
-        headers: { "x-real-search-csrf": "1" },
-      });
-    void heartbeat();
-    const timer = window.setInterval(() => void heartbeat(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [id]);
+    const timer = window.setTimeout(() => {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const token = fragment.get("token");
+      const password = fragment.get("password");
+      if (token && password) {
+        setCredentials({ token, password });
+        window.history.replaceState(
+          window.history.state,
+          "",
+          window.location.pathname,
+        );
+      }
+      setCredentialsLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function endSession() {
     if (!id) {
@@ -35,11 +44,21 @@ export default function ViewPage() {
     router.push("/");
   }
 
-  if (!id) {
+  if (!id || !credentialsLoaded) {
     return <p className="px-4 py-8 text-muted">Opening sandbox…</p>;
   }
+  if (!credentials) {
+    return <p className="px-4 py-8 text-muted">Viewer credentials are missing.</p>;
+  }
 
-  const vncSrc = `/click-broker/sessions/${id}/vnc/vnc.html?autoconnect=1&resize=remote&path=click-broker/sessions/${id}/vnc/websockify`;
+  const vncQuery = new URLSearchParams({
+    autoconnect: "1",
+    resize: "remote",
+    path: `click-broker/sessions/${id}/vnc/websockify`,
+    token: credentials.token,
+    password: credentials.password,
+  });
+  const vncSrc = `/click-broker/sessions/${id}/vnc/vnc.html?${vncQuery.toString()}`;
 
   return (
     <main className="flex min-h-0 flex-1 flex-col">

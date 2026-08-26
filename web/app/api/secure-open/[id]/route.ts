@@ -15,7 +15,7 @@ export async function DELETE(
     return NextResponse.json({ error: "CSRF validation failed" }, { status: 403 });
   }
   const { id } = await context.params;
-  if (!/^[a-f0-9]{16}$/.test(id)) {
+  if (!/^[a-f0-9]{32}$/.test(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
   try {

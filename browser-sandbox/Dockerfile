@@ -19,7 +19,8 @@ RUN apt-get update \
     /usr/lib/firefox-esr/distribution /usr/lib/firefox-esr/defaults/pref \
     /opt/firefox-profile \
   && chmod 000 /nonexistent \
-  && useradd --create-home --uid 1000 --shell /usr/sbin/nologin sandbox
+  && useradd --create-home --uid 1000 --shell /usr/sbin/nologin sandbox \
+  && useradd --create-home --uid 1001 --shell /usr/sbin/nologin vnc
 
 COPY policies.json /usr/lib/firefox-esr/distribution/policies.json
 COPY policies.json /etc/firefox-esr/policies/policies.json

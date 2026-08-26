@@ -37,12 +37,21 @@ export function SearchResults({ results }: SearchResultsProps) {
         },
         body: JSON.stringify({ url }),
       });
-      const payload = (await response.json()) as { id?: string; error?: string };
-      if (!response.ok || !payload.id) {
+      const payload = (await response.json()) as {
+        id?: string;
+        viewerToken?: string;
+        vncPassword?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.id || !payload.viewerToken || !payload.vncPassword) {
         setError(payload.error ?? "Could not start sandbox");
         return;
       }
-      router.push(`/view/${payload.id}`);
+      const fragment = new URLSearchParams({
+        token: payload.viewerToken,
+        password: payload.vncPassword,
+      });
+      router.push(`/view/${payload.id}#${fragment.toString()}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start sandbox");
     } finally {

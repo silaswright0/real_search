@@ -2,11 +2,12 @@
 set -eu
 
 QDRANT_URL="${QDRANT_URL:-http://qdrant:6333}"
+QDRANT_API_KEY="${QDRANT_API_KEY:?QDRANT_API_KEY is required}"
 
 echo "waiting for Qdrant at ${QDRANT_URL}"
 i=0
 while [ "$i" -lt 30 ]; do
-  if curl -sf "${QDRANT_URL}/readyz" >/dev/null 2>&1; then
+  if curl -sf -H "api-key: ${QDRANT_API_KEY}" "${QDRANT_URL}/readyz" >/dev/null 2>&1; then
     echo "Qdrant is up"
     break
   fi
@@ -21,6 +22,7 @@ fi
 
 code="$(curl -s -o /tmp/qdrant-pages.json -w "%{http_code}" \
   -X PUT "${QDRANT_URL}/collections/pages" \
+  -H "api-key: ${QDRANT_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "vectors": {

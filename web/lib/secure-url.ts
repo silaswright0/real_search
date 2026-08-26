@@ -1,5 +1,9 @@
 export function isPrivateHostname(host: string): boolean {
-  const name = host.toLowerCase().replace(/\.$/, "");
+  const name = host
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^\[/, "")
+    .replace(/\]$/, "");
   if (
     name === "localhost" ||
     name === "127.0.0.1" ||
@@ -37,22 +41,15 @@ export function isPrivateHostname(host: string): boolean {
     }
   }
   if (name.includes(":")) {
-    if (
-      name.startsWith("fe80:") ||
-      name.startsWith("fc") ||
-      name.startsWith("fd") ||
-      name.startsWith("::ffff:")
-    ) {
-      return true;
-    }
+    return true;
   }
   return false;
 }
 
-export function parsePublicHttpUrl(raw: string): URL {
+export function parsePublicHttpUrl(raw: string, allowInsecureHttp = false): URL {
   const url = new URL(raw);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("only http/https URLs are allowed");
+  if (url.protocol !== "https:" && !(allowInsecureHttp && url.protocol === "http:")) {
+    throw new Error("HTTPS is required");
   }
   if (url.username || url.password) {
     throw new Error("userinfo in URLs is not allowed");
