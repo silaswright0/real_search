@@ -1,4 +1,7 @@
-import { isSameOriginMutation } from "@/lib/click-broker";
+import {
+  isSameOriginMutation,
+  isSameOriginRequest,
+} from "@/lib/click-broker";
 import { parseMode } from "@/lib/mode";
 import { getSearchProvider } from "@/lib/search/providers";
 import { NextResponse } from "next/server";
@@ -19,18 +22,33 @@ function parsePage(value: unknown): number {
 }
 
 export async function POST(request: Request) {
-  if (!isSameOriginMutation(request)) {
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+  const isNativeForm = contentType.startsWith("application/x-www-form-urlencoded");
+  const originAllowed = isNativeForm
+    ? isSameOriginRequest(request)
+    : isSameOriginMutation(request);
+  if (!originAllowed) {
     return NextResponse.json(
       { error: "CSRF validation failed" },
       { status: 403, headers: PRIVATE_HEADERS },
     );
   }
+
   let body: { query?: unknown; mode?: unknown; pageno?: unknown };
   try {
-    body = (await request.json()) as typeof body;
+    if (isNativeForm) {
+      const form = await request.formData();
+      body = {
+        query: form.get("query"),
+        mode: form.get("mode"),
+        pageno: form.get("pageno"),
+      };
+    } else {
+      body = (await request.json()) as typeof body;
+    }
   } catch {
     return NextResponse.json(
-      { error: "invalid JSON" },
+      { error: "invalid request body" },
       { status: 400, headers: PRIVATE_HEADERS },
     );
   }

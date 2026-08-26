@@ -51,14 +51,16 @@ export default function ViewPage() {
     return <p className="px-4 py-8 text-muted">Viewer credentials are missing.</p>;
   }
 
-  const vncQuery = new URLSearchParams({
+  const websocketPath = `click-broker/sessions/${id}/vnc/websockify?token=${encodeURIComponent(
+    credentials.token,
+  )}`;
+  const vncFragment = new URLSearchParams({
     autoconnect: "1",
     resize: "remote",
-    path: `click-broker/sessions/${id}/vnc/websockify`,
-    token: credentials.token,
+    path: websocketPath,
     password: credentials.password,
   });
-  const vncSrc = `/click-broker/sessions/${id}/vnc/vnc.html?${vncQuery.toString()}`;
+  const vncSrc = `/click-broker/sessions/${id}/vnc/vnc.html#${vncFragment.toString()}`;
 
   return (
     <main className="flex min-h-0 flex-1 flex-col">

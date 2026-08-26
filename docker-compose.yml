@@ -1,7 +1,11 @@
 name: real-search
 
 networks:
-  default:
+  tor-egress:
+    name: real-search_tor-egress
+  app-internal:
+    name: real-search_app-internal
+    internal: true
   search:
     name: real-search_search
     internal: true
@@ -41,7 +45,7 @@ services:
     volumes:
       - tor-data:/var/lib/tor
     networks:
-      - default
+      - tor-egress
       - search
       - sandbox
     healthcheck:
@@ -158,7 +162,7 @@ services:
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - ALLOW_INSECURE_HTTP=${ALLOW_INSECURE_HTTP:-0}
     networks:
-      - default
+      - app-internal
       - search
       - p2p
     depends_on:
@@ -172,7 +176,7 @@ services:
       context: ./browser-sandbox
     entrypoint: ["true"]
     restart: "no"
-    runtime: ${SANDBOX_RUNTIME:-runc}
+    runtime: runsc
     mem_limit: 1g
     network_mode: none
 
@@ -184,7 +188,7 @@ services:
     environment:
       - BROWSER_IMAGE=real-search-browser:local
       - SANDBOX_NETWORK=real-search_sandbox
-      - SANDBOX_RUNTIME=${SANDBOX_RUNTIME:-runc}
+      - SANDBOX_RUNTIME=runsc
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     cap_drop:
@@ -219,7 +223,7 @@ services:
       - SANDBOX_NETWORK=real-search_sandbox
       - TOR_HOST=tor
       - DOCKER_TLS_VERIFY=0
-      - SANDBOX_RUNTIME=${SANDBOX_RUNTIME:-runc}
+      - SANDBOX_RUNTIME=runsc
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - HEARTBEAT_TIMEOUT_SEC=90
       - ALLOW_INSECURE_HTTP=${ALLOW_INSECURE_HTTP:-0}
@@ -228,7 +232,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - default
+      - app-internal
       - sandbox
       - sandbox-admin-net
     depends_on:
@@ -248,6 +252,8 @@ services:
     environment:
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - NGINX_ENVSUBST_FILTER=CLICK_BROKER_TOKEN
+    networks:
+      - app-internal
     depends_on:
       - web
       - click-broker

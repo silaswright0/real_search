@@ -14,13 +14,14 @@ export function brokerHeaders(extra?: HeadersInit): Headers {
   return headers;
 }
 
-export function isSameOriginMutation(request: Request): boolean {
-  if (request.headers.get(CSRF_HEADER) !== "1") {
-    return false;
-  }
+export function isSameOriginRequest(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (!origin) {
     return false;
   }
   return origin === new URL(request.url).origin;
+}
+
+export function isSameOriginMutation(request: Request): boolean {
+  return request.headers.get(CSRF_HEADER) === "1" && isSameOriginRequest(request);
 }

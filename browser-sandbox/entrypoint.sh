@@ -23,13 +23,15 @@ if ! iptables -F OUTPUT; then
   echo "could not enforce IPv4 Tor-only firewall" >&2
   exit 1
 fi
+# Reply traffic for broker-originated noVNC connections must be accepted
+# before private-network rules evaluate new outbound connections.
 iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A OUTPUT -p tcp -d "$TOR_IP" --dport "$TOR_PORT" -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate NEW -d 10.0.0.0/8 -j REJECT
-iptables -A OUTPUT -m conntrack --ctstate NEW -d 172.16.0.0/12 -j REJECT
-iptables -A OUTPUT -m conntrack --ctstate NEW -d 192.168.0.0/16 -j REJECT
-iptables -A OUTPUT -m conntrack --ctstate NEW -d 169.254.0.0/16 -j REJECT
+iptables -A OUTPUT -m conntrack --ctstate NEW -d 10.0.0.0/8 -j DROP
+iptables -A OUTPUT -m conntrack --ctstate NEW -d 172.16.0.0/12 -j DROP
+iptables -A OUTPUT -m conntrack --ctstate NEW -d 192.168.0.0/16 -j DROP
+iptables -A OUTPUT -m conntrack --ctstate NEW -d 169.254.0.0/16 -j DROP
 iptables -P OUTPUT DROP
 
 if ! ip6tables -F OUTPUT 2>/dev/null; then
@@ -46,6 +48,7 @@ sleep 0.2
 
 export DISPLAY="$DISPLAY_NUM"
 install -d -o sandbox -g sandbox -m 700 /home/sandbox/profile
+install -d -o sandbox -g sandbox -m 700 /home/sandbox/Downloads
 install -o sandbox -g sandbox -m 600 /opt/firefox-profile/user.js /home/sandbox/profile/user.js
 VNC_PASSWORD="$(printf '%s' "$VNC_TOKEN" | sha256sum | cut -c1-8)"
 printf '%s: 127.0.0.1:5900\n' "$VNC_TOKEN" > /tmp/websockify.tokens

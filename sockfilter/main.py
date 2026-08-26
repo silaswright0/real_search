@@ -12,13 +12,13 @@ from aiohttp import ClientSession, UnixConnector, web
 DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
 ALLOWED_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
 ALLOWED_NETWORK = os.environ.get("SANDBOX_NETWORK", "real-search_sandbox")
-ALLOWED_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runc").strip() or "runc"
+ALLOWED_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runsc").strip() or "runsc"
 ALLOWED_TMPFS = {"/tmp", "/home/sandbox"}
 CREATE_NAME_RE = re.compile(r"^click-[a-f0-9]{32}$")
 SANDBOX_NAME_RE = re.compile(r"^/?click-[a-f0-9]{32}$")
 
-if ALLOWED_RUNTIME not in {"runc", "runsc"}:
-    raise RuntimeError("SANDBOX_RUNTIME must be runc or runsc")
+if ALLOWED_RUNTIME != "runsc":
+    raise RuntimeError("SANDBOX_RUNTIME must be runsc")
 
 CREATE_RE = re.compile(r"^(/v[\d.]+)?/containers/create$")
 CONTAINER_MUTATE_RE = re.compile(

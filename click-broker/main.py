@@ -21,7 +21,7 @@ HEARTBEAT_TIMEOUT_SEC = int(os.environ.get("HEARTBEAT_TIMEOUT_SEC", "90"))
 BROWSER_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
 SANDBOX_NETWORK = os.environ.get("SANDBOX_NETWORK", "real-search_sandbox")
 TOR_HOST = os.environ.get("TOR_HOST", "tor")
-SANDBOX_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runc").strip() or "runc"
+SANDBOX_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runsc").strip() or "runsc"
 BROKER_TOKEN = os.environ.get("CLICK_BROKER_TOKEN", "")
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "3"))
 ALLOW_INSECURE_HTTP = os.environ.get("ALLOW_INSECURE_HTTP", "0") == "1"
@@ -29,8 +29,8 @@ SANDBOX_LABEL = "real-search.sandbox=true"
 
 if len(BROKER_TOKEN) < 32:
     raise RuntimeError("CLICK_BROKER_TOKEN must be at least 32 characters")
-if SANDBOX_RUNTIME not in {"runc", "runsc"}:
-    raise RuntimeError("SANDBOX_RUNTIME must be runc or runsc")
+if SANDBOX_RUNTIME != "runsc":
+    raise RuntimeError("SANDBOX_RUNTIME must be runsc")
 
 ID_RE = re.compile(r"^[a-f0-9]{32}$")
 

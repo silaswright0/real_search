@@ -30,13 +30,19 @@ export function SearchBar({ initialMode }: SearchBarProps) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="w-full">
+    <form
+      method="post"
+      action="/api/search"
+      encType="application/x-www-form-urlencoded"
+      onSubmit={onSubmit}
+      className="w-full"
+    >
       <label htmlFor="q" className="sr-only">
         Search
       </label>
       <input
         id="q"
-        name="q"
+        name="query"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder=""
@@ -44,6 +50,8 @@ export function SearchBar({ initialMode }: SearchBarProps) {
         autoComplete="off"
         className="w-full border border-foreground bg-transparent px-3 py-2 text-base text-foreground outline-none placeholder:text-muted"
       />
+      <input type="hidden" name="mode" value={mode} />
+      <input type="hidden" name="pageno" value="1" />
     </form>
   );
 }
