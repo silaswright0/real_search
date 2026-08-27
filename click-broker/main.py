@@ -9,6 +9,7 @@ import ipaddress
 import os
 import re
 import secrets
+import socket
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -73,6 +74,24 @@ def validate_target_url(raw: str) -> str:
     if _is_private_host(parsed.hostname):
         raise ValueError("private or loopback hosts are not allowed")
     return parsed.geturl()
+
+
+def _sandbox_endpoints() -> tuple[str, str]:
+    tor_ip = socket.gethostbyname(TOR_HOST)
+    address = ipaddress.ip_address(tor_ip)
+    if address.version != 4 or address.is_loopback or not address.is_private:
+        raise OSError("Tor did not resolve to a private sandbox-network IPv4 address")
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect((tor_ip, 9050))
+        broker_ip = str(probe.getsockname()[0])
+    broker_address = ipaddress.ip_address(broker_ip)
+    if (
+        broker_address.version != 4
+        or broker_address.is_loopback
+        or not broker_address.is_private
+    ):
+        raise OSError("broker has no private sandbox-network IPv4 address")
+    return tor_ip, broker_ip
 
 
 def _container_ip(container: Any) -> str | None:
@@ -141,6 +160,10 @@ async def create_session(request: web.Request) -> web.Response:
         target = validate_target_url(str(body.get("url", "")))
     except ValueError as exc:
         return web.json_response({"error": str(exc)}, status=400)
+    try:
+        tor_ip, broker_ip = _sandbox_endpoints()
+    except OSError as exc:
+        return web.json_response({"error": str(exc)}, status=502)
 
     sid = secrets.token_hex(16)
     viewer_token = secrets.token_urlsafe(32)
@@ -153,7 +176,7 @@ async def create_session(request: web.Request) -> web.Response:
         "labels": {"real-search.sandbox": "true"},
         "network": SANDBOX_NETWORK,
         "cap_drop": ["ALL"],
-        "cap_add": ["NET_ADMIN"],
+        "cap_add": ["NET_ADMIN", "SETGID", "SETUID"],
         "security_opt": ["no-new-privileges:true"],
         "tmpfs": {
             "/tmp": "rw,noexec,nosuid,nodev,size=64m",
@@ -163,8 +186,9 @@ async def create_session(request: web.Request) -> web.Response:
         "privileged": False,
         "environment": {
             "TARGET_URL": target,
-            "TOR_HOST": TOR_HOST,
+            "TOR_IP": tor_ip,
             "TOR_PORT": "9050",
+            "BROKER_IP": broker_ip,
             "VNC_TOKEN": viewer_token,
         },
         "mem_limit": "1g",
@@ -366,7 +390,14 @@ def build_app() -> web.Application:
 
 
 def main() -> None:
-    web.run_app(build_app(), host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+    # nginx converts the HttpOnly cookie to websockify's internal token query.
+    # Keep that request line out of container logs.
+    web.run_app(
+        build_app(),
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "8080")),
+        access_log=None,
+    )
 
 
 if __name__ == "__main__":

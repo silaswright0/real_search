@@ -39,19 +39,27 @@ export function SearchResults({ results }: SearchResultsProps) {
       });
       const payload = (await response.json()) as {
         id?: string;
-        viewerToken?: string;
         vncPassword?: string;
         error?: string;
       };
-      if (!response.ok || !payload.id || !payload.viewerToken || !payload.vncPassword) {
+      if (!response.ok || !payload.id || !payload.vncPassword) {
         setError(payload.error ?? "Could not start sandbox");
         return;
       }
-      const fragment = new URLSearchParams({
-        token: payload.viewerToken,
-        password: payload.vncPassword,
-      });
-      router.push(`/view/${payload.id}#${fragment.toString()}`);
+      try {
+        window.sessionStorage.setItem(
+          `real-search:vnc-password:${payload.id}`,
+          payload.vncPassword,
+        );
+      } catch {
+        await fetch(`/api/secure-open/${payload.id}`, {
+          method: "DELETE",
+          headers: { "x-real-search-csrf": "1" },
+        });
+        setError("Session storage is unavailable; the sandbox was closed.");
+        return;
+      }
+      router.push(`/view/${payload.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start sandbox");
     } finally {

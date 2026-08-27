@@ -3,6 +3,11 @@ name: real-search
 networks:
   tor-egress:
     name: real-search_tor-egress
+  gateway-ingress:
+    name: real-search_gateway-ingress
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
   app-internal:
     name: real-search_app-internal
     internal: true
@@ -12,6 +17,9 @@ networks:
   sandbox:
     name: real-search_sandbox
     internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
   sandbox-admin-net:
     name: real-search_sandbox-admin
     internal: true
@@ -45,9 +53,10 @@ services:
     volumes:
       - tor-data:/var/lib/tor
     networks:
-      - tor-egress
-      - search
-      - sandbox
+      tor-egress:
+      search:
+      sandbox:
+        ipv4_address: 172.30.0.2
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9050"]
       interval: 15s
@@ -174,11 +183,35 @@ services:
     image: real-search-browser:local
     build:
       context: ./browser-sandbox
-    entrypoint: ["true"]
     restart: "no"
     runtime: runsc
     mem_limit: 1g
-    network_mode: none
+    read_only: true
+    user: "0"
+    environment:
+      - TARGET_URL=about:blank
+      - TOR_IP=172.30.0.2
+      - TOR_PORT=9050
+      - BROKER_IP=172.30.0.3
+      - VNC_TOKEN=canary-token-00000000000000000000000000000000
+      - SANDBOX_CANARY=1
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /home/sandbox:rw,noexec,nosuid,nodev,uid=1000,gid=1000,size=128m
+    networks:
+      sandbox:
+        ipv4_address: 172.30.0.4
+    depends_on:
+      tor:
+        condition: service_healthy
 
   sockfilter:
     build:
@@ -189,6 +222,8 @@ services:
       - BROWSER_IMAGE=real-search-browser:local
       - SANDBOX_NETWORK=real-search_sandbox
       - SANDBOX_RUNTIME=runsc
+      - SANDBOX_TOR_IP=172.30.0.2
+      - SANDBOX_BROKER_IP=172.30.0.3
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     cap_drop:
@@ -232,9 +267,10 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - app-internal
-      - sandbox
-      - sandbox-admin-net
+      app-internal:
+      sandbox:
+        ipv4_address: 172.30.0.3
+      sandbox-admin-net:
     depends_on:
       sockfilter:
         condition: service_healthy
@@ -242,7 +278,8 @@ services:
         condition: service_healthy
 
   gateway:
-    image: docker.io/library/nginx:1.27-alpine
+    build:
+      context: ./gateway
     restart: unless-stopped
     mem_limit: 128m
     ports:
@@ -253,7 +290,14 @@ services:
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - NGINX_ENVSUBST_FILTER=CLICK_BROKER_TOKEN
     networks:
-      - app-internal
+      app-internal:
+      gateway-ingress:
+        ipv4_address: 172.29.0.2
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     depends_on:
       - web
       - click-broker

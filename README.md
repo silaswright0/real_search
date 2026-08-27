@@ -113,10 +113,17 @@ cp .env.example .env
 # Generate independent values for SEARXNG_SECRET, QDRANT_API_KEY,
 # CLICK_BROKER_TOKEN, and a YaCy password:
 python -c "import secrets; print(secrets.token_hex(32))"
+# Required after every Docker daemon/firewall restart. This blocks new outbound
+# flows from the host-published gateway while retaining established UI replies.
+sudo sh gateway/install-egress-firewall.sh
 docker compose up --build
 ```
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish `3000` on `0.0.0.0`.
+The gateway refuses to start if a direct IPv4 egress probe succeeds. The
+`DOCKER-USER` rule is the authoritative control, and a recurring guard stops
+nginx if that policy disappears while the stack is running. Reinstall the rule
+after Docker or the host firewall is restarted.
 
 Search terms are held only in the current page's JavaScript memory and sent to
 `/api/search` in a POST body. They are not placed in browser URLs, referrers, or
@@ -131,20 +138,28 @@ Titles do not open the host browser. They start `real-search-browser:local`:
 
 1. HTTPS-only URL allowlist (no loopback/private/decimal IPs or userinfo); HTTP requires `ALLOW_INSECURE_HTTP=1`
 2. Join **only** `real-search_sandbox` (`internal: true` — no default gateway to the internet)
-3. Firefox SOCKS to `127.0.0.1:9050` (socat to `tor:9050`) and `socks_remote_dns`
-4. Tor isolates streams by container source address; iptables accepts established replies first, then drops new RFC1918/link-local connections and every direct-internet path
+3. The broker resolves Tor on the ordinary Docker network before creation and gives runsc literal `TOR_IP` and `BROKER_IP` values; the guest never depends on Docker's `127.0.0.11` DNS
+4. Firefox SOCKS to `127.0.0.1:9050` (socat to the literal Tor address) with remote DNS; stateless guest firewall rules permit only Tor SOCKS traffic, loopback, and websockify replies to the broker
 5. `/tmp` and `/home/sandbox` are ephemeral `noexec,nosuid,nodev` tmpfs mounts
 6. Firefox blocks file-selection dialogs; automatic downloads and disabled-PDF-viewer payloads can only land in bounded RAM-backed tmpfs and disappear with the session
 7. x11vnc enforces `-nosel` at the display boundary, so clipboard isolation does not depend on a noVNC client setting
-8. Each session receives a 256-bit websockify token plus an ephemeral VNC password; noVNC settings remain in URL fragments, while only the token is sent on the authenticated WebSocket path required by websockify
-9. noVNC is proxied at `/click-broker/...` through **nginx** with an internal broker token
+8. Each session receives a 256-bit websockify token in a path-scoped HttpOnly session cookie plus an ephemeral VNC password held briefly in `sessionStorage`; neither credential enters browser URLs
+9. The trusted Next.js bundle runs the noVNC RFB client directly. nginx accepts only the WebSocket endpoint, converts the HttpOnly cookie to websockify's internal token query, strips the cookie, and authenticates to the broker
 10. Destroy on End session, Firefox close, or 90 seconds after the viewer WebSocket disconnects
 
-`sockfilter` is the only service with the Docker socket. It is reachable only from `click-broker` on `real-search_sandbox-admin`; it exact-matches the mandatory `runsc` runtime, browser image, environment keys, command, user, network, read-only root, auto-removal, resource limits, tmpfs mounts, security options, and capabilities.
+`sockfilter` is the only service with the Docker socket. It is reachable only from `click-broker` on `real-search_sandbox-admin`; it rejects unknown create and `HostConfig` keys, exact-matches the mandatory `runsc` runtime and all sandbox invariants, then rebuilds a minimal Docker create payload instead of forwarding caller JSON.
 
-`tor` is the only service attached to a network with internet egress. `gateway`,
-`web`, and `click-broker` communicate over `real-search_app-internal`; the
-additional search, P2P, sandbox, admin, and vector networks are also internal.
+`tor` is the only service permitted to create internet flows. `gateway` also
+joins `real-search_gateway-ingress` so Docker can publish loopback port 3000,
+but its fixed `172.29.0.2` address is denied new outbound flows in
+`DOCKER-USER`. `gateway`, `web`, and `click-broker` communicate over
+`real-search_app-internal`; the additional search, P2P, sandbox, admin, and
+vector networks are internal.
+
+Before `sockfilter` receives access to the Docker socket, the
+`browser-sandbox` canary runs the real image with `runsc`, the production
+capability/tmpfs/network controls, and the real entrypoint. It must bring up
+Xvfb, x11vnc, websockify, and socat and complete a Tor SOCKS handshake.
 
 React Strict Mode does **not** delete the session on remount. The broker refreshes the lease while the noVNC WebSocket exists, so browser timer throttling cannot kill a connected session. On restart, the broker removes labeled orphan sandboxes before accepting new sessions.
 

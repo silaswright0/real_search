@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -13,7 +14,51 @@ DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
 ALLOWED_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
 ALLOWED_NETWORK = os.environ.get("SANDBOX_NETWORK", "real-search_sandbox")
 ALLOWED_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runsc").strip() or "runsc"
-ALLOWED_TMPFS = {"/tmp", "/home/sandbox"}
+ALLOWED_TOR_IP = os.environ.get("SANDBOX_TOR_IP", "172.30.0.2")
+ALLOWED_BROKER_IP = os.environ.get("SANDBOX_BROKER_IP", "172.30.0.3")
+ALLOWED_TMPFS = {
+    "/tmp": "rw,noexec,nosuid,nodev,size=64m",
+    "/home/sandbox": "rw,noexec,nosuid,nodev,uid=1000,gid=1000,size=128m",
+}
+ALLOWED_CREATE_KEYS = {
+    "Hostname",
+    "Domainname",
+    "ExposedPorts",
+    "User",
+    "Tty",
+    "OpenStdin",
+    "StdinOnce",
+    "AttachStdin",
+    "AttachStdout",
+    "AttachStderr",
+    "Env",
+    "Cmd",
+    "Image",
+    "Volumes",
+    "NetworkDisabled",
+    "Entrypoint",
+    "WorkingDir",
+    "HostConfig",
+    "NetworkingConfig",
+    "MacAddress",
+    "Labels",
+    "StopSignal",
+    "Healthcheck",
+    "StopTimeout",
+    "Runtime",
+}
+ALLOWED_HOST_KEYS = {
+    "Memory",
+    "NetworkMode",
+    "ReadonlyRootfs",
+    "CapAdd",
+    "CapDrop",
+    "SecurityOpt",
+    "Tmpfs",
+    "PidsLimit",
+    "AutoRemove",
+    "Runtime",
+}
 CREATE_NAME_RE = re.compile(r"^click-[a-f0-9]{32}$")
 SANDBOX_NAME_RE = re.compile(r"^/?click-[a-f0-9]{32}$")
 
@@ -30,7 +75,7 @@ CONTAINER_LIST_RE = re.compile(r"^(/v[\d.]+)?/containers/json$")
 CONTAINER_REF_RE = re.compile(
     r"^(/v[\d.]+)?/containers/([^/]+)(?:/(start|stop|kill|wait|json))?$",
 )
-PING_RE = re.compile(r"^(/v[\d.]+)?/(_ping|version|info)$")
+PING_RE = re.compile(r"^(/v[\d.]+)?/(_ping|version)$")
 PING_BARE_RE = re.compile(r"^/_ping$")
 
 
@@ -79,10 +124,11 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def _validate_create(body: dict[str, Any]) -> str | None:
+    unknown = set(body) - ALLOWED_CREATE_KEYS
+    if unknown:
+        return f"unknown create keys: {','.join(sorted(unknown))}"
     if body.get("Image") != ALLOWED_IMAGE:
         return f"image must be {ALLOWED_IMAGE}"
-    if body.get("Mounts"):
-        return "mounts not allowed"
     if body.get("Volumes"):
         return "volumes not allowed"
     if body.get("Labels") != {"real-search.sandbox": "true"}:
@@ -98,33 +144,26 @@ def _validate_create(body: dict[str, Any]) -> str | None:
         if not separator or key in env:
             return "invalid environment"
         env[key] = value
-    if set(env) != {"TARGET_URL", "TOR_HOST", "TOR_PORT", "VNC_TOKEN"}:
+    if set(env) != {"TARGET_URL", "TOR_IP", "TOR_PORT", "BROKER_IP", "VNC_TOKEN"}:
         return "unexpected environment keys"
-    if env["TOR_HOST"] != "tor" or env["TOR_PORT"] != "9050":
+    if env["TOR_PORT"] != "9050":
         return "fixed Tor endpoint required"
+    try:
+        addresses = [ipaddress.ip_address(env[key]) for key in ("TOR_IP", "BROKER_IP")]
+    except ValueError:
+        return "literal Tor and broker IPv4 addresses are required"
+    if any(address.version != 4 or not address.is_private for address in addresses):
+        return "private Tor and broker IPv4 addresses are required"
+    if env["TOR_IP"] != ALLOWED_TOR_IP or env["BROKER_IP"] != ALLOWED_BROKER_IP:
+        return "fixed sandbox-network endpoints are required"
     if len(env["VNC_TOKEN"]) < 32:
         return "VNC token is too short"
     if body.get("HostConfig") is None:
         return "HostConfig is required"
     host = body.get("HostConfig") or {}
-    if host.get("Privileged"):
-        return "privileged not allowed"
-    if host.get("Binds") or host.get("Mounts") or host.get("VolumesFrom") or host.get("Links"):
-        return "binds/mounts/links not allowed"
-    if host.get("Devices") or host.get("DeviceRequests") or host.get("DeviceCgroupRules"):
-        return "devices not allowed"
-    if host.get("ExtraHosts"):
-        return "extra hosts not allowed"
-    if host.get("Dns") or host.get("DnsSearch") or host.get("DnsOptions"):
-        return "custom DNS not allowed"
-    if host.get("PidMode") in {"host", "container"}:
-        return "host pid namespace not allowed"
-    if host.get("IpcMode") == "host" or host.get("UTSMode") == "host":
-        return "host namespaces not allowed"
-    if host.get("UsernsMode") in {"host", "container"}:
-        return "host userns not allowed"
-    if host.get("PublishAllPorts") or host.get("PortBindings"):
-        return "published ports not allowed"
+    unknown_host = set(host) - ALLOWED_HOST_KEYS
+    if unknown_host:
+        return f"unknown HostConfig keys: {','.join(sorted(unknown_host))}"
     if not host.get("ReadonlyRootfs"):
         return "readonly rootfs required"
     if not host.get("AutoRemove"):
@@ -137,31 +176,79 @@ def _validate_create(body: dict[str, Any]) -> str | None:
     if security_opt != {"no-new-privileges:true"}:
         return "no-new-privileges is required"
     tmpfs = host.get("Tmpfs") or {}
-    if set(tmpfs) != ALLOWED_TMPFS:
-        return "only the required sandbox tmpfs mounts are allowed"
-    if any(
-        flag not in str(options).split(",")
-        for options in tmpfs.values()
-        for flag in ("noexec", "nosuid", "nodev")
-    ):
-        return "sandbox tmpfs mounts require noexec,nosuid,nodev"
+    if tmpfs != ALLOWED_TMPFS:
+        return "sandbox tmpfs mounts must exactly match the bounded policy"
     cap_drop = {str(c).removeprefix("CAP_") for c in _as_list(host.get("CapDrop"))}
     if "ALL" not in cap_drop:
         return "all capabilities must be dropped"
     caps = {str(c).removeprefix("CAP_") for c in _as_list(host.get("CapAdd"))}
-    if caps != {"NET_ADMIN"}:
-        return "exactly NET_ADMIN must be added"
+    if caps != {"NET_ADMIN", "SETGID", "SETUID"}:
+        return "only NET_ADMIN, SETGID and SETUID may be added"
     runtime = host.get("Runtime") or ""
     if runtime != ALLOWED_RUNTIME:
         return f"runtime must be {ALLOWED_RUNTIME}"
     mode = (host.get("NetworkMode") or "").strip()
-    endpoints = ((body.get("NetworkingConfig") or {}).get("EndpointsConfig") or {})
+    networking = body.get("NetworkingConfig") or {}
+    if set(networking) - {"EndpointsConfig"}:
+        return "unknown NetworkingConfig keys"
+    endpoints = networking.get("EndpointsConfig") or {}
+    if set(endpoints) - {ALLOWED_NETWORK}:
+        return "unexpected network endpoint"
+    if any(value not in ({}, None) for value in endpoints.values()):
+        return "network endpoint overrides are not allowed"
     nets = {mode} if mode else set()
     nets.update(endpoints)
     nets.discard("")
     if nets != {ALLOWED_NETWORK}:
         return f"network must be only {ALLOWED_NETWORK}"
+    false_only = {
+        "Tty",
+        "OpenStdin",
+        "StdinOnce",
+        "AttachStdin",
+        "AttachStdout",
+        "AttachStderr",
+        "NetworkDisabled",
+    }
+    if any(body.get(key) not in (None, False) for key in false_only):
+        return "interactive or attached containers are not allowed"
+    empty_only = {
+        "Hostname",
+        "Domainname",
+        "ExposedPorts",
+        "WorkingDir",
+        "MacAddress",
+        "StopSignal",
+        "Healthcheck",
+        "StopTimeout",
+        "Runtime",
+    }
+    if any(body.get(key) not in (None, "", {}, []) for key in empty_only):
+        return "unexpected container configuration"
     return None
+
+
+def _clean_create(body: dict[str, Any]) -> bytes:
+    env = sorted(str(item) for item in _as_list(body["Env"]))
+    clean = {
+        "Image": ALLOWED_IMAGE,
+        "User": "0",
+        "Env": env,
+        "Labels": {"real-search.sandbox": "true"},
+        "HostConfig": {
+            "Memory": 1024 * 1024 * 1024,
+            "NetworkMode": ALLOWED_NETWORK,
+            "ReadonlyRootfs": True,
+            "CapAdd": ["NET_ADMIN", "SETGID", "SETUID"],
+            "CapDrop": ["ALL"],
+            "SecurityOpt": ["no-new-privileges:true"],
+            "Tmpfs": ALLOWED_TMPFS,
+            "PidsLimit": 256,
+            "AutoRemove": True,
+            "Runtime": ALLOWED_RUNTIME,
+        },
+    }
+    return json.dumps(clean, separators=(",", ":")).encode("utf-8")
 
 
 async def handle(request: web.Request) -> web.StreamResponse:
@@ -185,6 +272,8 @@ async def handle(request: web.Request) -> web.StreamResponse:
 
     raw = await request.read()
     if CREATE_RE.match(path) and request.method == "POST":
+        if set(request.rel_url.query) != {"name"}:
+            return web.json_response({"message": "create query denied"}, status=403)
         name = request.rel_url.query.get("name", "")
         if not CREATE_NAME_RE.match(name):
             return web.json_response({"message": "sandbox name required"}, status=403)
@@ -195,6 +284,7 @@ async def handle(request: web.Request) -> web.StreamResponse:
         err = _validate_create(body)
         if err:
             return web.json_response({"message": err}, status=403)
+        raw = _clean_create(body)
 
     unix = UnixConnector(path=DOCKER_SOCK)
     url = f"http://docker{path}{qs}"

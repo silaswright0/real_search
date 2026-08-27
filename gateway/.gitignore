@@ -1,3 +1,6 @@
 *
 !.gitignore
+!Dockerfile
+!entrypoint.sh
+!install-egress-firewall.sh
 !nginx.conf

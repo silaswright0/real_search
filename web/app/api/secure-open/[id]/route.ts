@@ -3,6 +3,11 @@ import {
   brokerUrl,
   isSameOriginMutation,
 } from "@/lib/click-broker";
+import {
+  secureCookieFor,
+  viewerWebsocketPath,
+  VIEWER_COOKIE,
+} from "@/lib/viewer-auth";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +30,15 @@ export async function DELETE(
       cache: "no-store",
     });
     const payload = (await response.json()) as Record<string, unknown>;
-    return NextResponse.json(payload, { status: response.status });
+    const result = NextResponse.json(payload, { status: response.status });
+    result.cookies.set(VIEWER_COOKIE, "", {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: secureCookieFor(request),
+      path: viewerWebsocketPath(id),
+      maxAge: 0,
+    });
+    return result;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "click broker unreachable";
