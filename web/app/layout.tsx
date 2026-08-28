@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
+import { CSRF_COOKIE } from "@/lib/auth-constants";
+import { CsrfProvider } from "@/lib/csrf-context";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,15 +21,24 @@ export const metadata: Metadata = {
   description: "Personal search: web via SearXNG over Tor, peer-to-peer via local YaCy.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
+  const csrfToken = (await cookies()).get(CSRF_COOKIE)?.value ?? "";
   return (
     <html
       lang="en"
       data-theme="web"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {nonce ? <script nonce={nonce} /> : null}
+      </head>
       <body className="min-h-full flex flex-col">
-        <AppShell>{children}</AppShell>
+        <CsrfProvider token={csrfToken}>
+          <AppShell>{children}</AppShell>
+        </CsrfProvider>
       </body>
     </html>
   );

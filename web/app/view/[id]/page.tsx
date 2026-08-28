@@ -1,5 +1,6 @@
 "use client";
 
+import { csrfHeaders, useCsrfToken } from "@/lib/csrf-context";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -12,13 +13,13 @@ export default function ViewPage() {
   const [credentialsLoaded, setCredentialsLoaded] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const screenRef = useRef<HTMLDivElement>(null);
+  const csrfToken = useCsrfToken();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (id && /^[a-f0-9]{32}$/.test(id)) {
         const key = `real-search:vnc-password:${id}`;
         const stored = window.sessionStorage.getItem(key);
-        window.sessionStorage.removeItem(key);
         if (stored) {
           setPassword(stored);
         }
@@ -78,9 +79,10 @@ export default function ViewPage() {
       return;
     }
     setEnding(true);
+    window.sessionStorage.removeItem(`real-search:vnc-password:${id}`);
     await fetch(`/api/secure-open/${id}`, {
       method: "DELETE",
-      headers: { "x-real-search-csrf": "1" },
+      headers: csrfHeaders(csrfToken),
     });
     router.push("/");
   }

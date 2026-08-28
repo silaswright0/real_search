@@ -1,8 +1,8 @@
 import {
   brokerHeaders,
   brokerUrl,
-  isSameOriginMutation,
 } from "@/lib/click-broker";
+import { isAuthorizedMutation } from "@/lib/local-auth";
 import { parsePublicHttpUrl } from "@/lib/secure-url";
 import {
   secureCookieFor,
@@ -14,8 +14,8 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!isSameOriginMutation(request)) {
-    return NextResponse.json({ error: "CSRF validation failed" }, { status: 403 });
+  if (!isAuthorizedMutation(request)) {
+    return NextResponse.json({ error: "authorization failed" }, { status: 403 });
   }
   let raw = "";
   try {

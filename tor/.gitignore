@@ -2,3 +2,5 @@
 !.gitignore
 !Dockerfile
 !torrc
+!socks-gate.py
+!entrypoint.sh

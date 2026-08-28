@@ -3,23 +3,50 @@ name: real-search
 networks:
   tor-egress:
     name: real-search_tor-egress
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-rs-tor
+    ipam:
+      config:
+        - subnet: 172.27.0.0/24
   gateway-ingress:
     name: real-search_gateway-ingress
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-rs-ingress
     ipam:
       config:
         - subnet: 172.29.0.0/24
   app-internal:
     name: real-search_app-internal
     internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-rs-app
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
   search:
     name: real-search_search
     internal: true
-  sandbox:
-    name: real-search_sandbox
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+  sandbox-egress:
+    name: real-search_sandbox-egress
     internal: true
+    enable_ipv6: false
     ipam:
       config:
         - subnet: 172.30.0.0/24
+  sandbox-vnc:
+    name: real-search_sandbox-vnc
+    internal: true
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
   sandbox-admin-net:
     name: real-search_sandbox-admin
     internal: true
@@ -32,14 +59,30 @@ networks:
 
 services:
   valkey:
-    image: docker.io/valkey/valkey:8-alpine
-    command: valkey-server --save "" --appendonly no --loglevel warning
+    image: docker.io/valkey/valkey:8-alpine@sha256:e0eb7c480958d32bdc4357a74bdd70653ae15f2f9b4c93c4a5a9fad1dc471c84
+    command:
+      - valkey-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --loglevel
+      - warning
+      - --requirepass
+      - ${VALKEY_PASSWORD:?set VALKEY_PASSWORD in .env}
     restart: unless-stopped
     mem_limit: 256m
+    environment:
+      - VALKEY_PASSWORD=${VALKEY_PASSWORD:?set VALKEY_PASSWORD in .env}
     networks:
-      - search
+      search:
+        ipv4_address: 172.28.0.4
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "valkey-cli --no-auth-warning -a \"$$VALKEY_PASSWORD\" ping | grep -q PONG",
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -50,22 +93,35 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     mem_limit: 256m
-    volumes:
-      - tor-data:/var/lib/tor
+    user: "0"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /var/lib/tor:rw,noexec,nosuid,nodev,mode=0777,size=64m
     networks:
       tor-egress:
+        ipv4_address: 172.27.0.2
       search:
-      sandbox:
+        ipv4_address: 172.28.0.2
+      sandbox-egress:
         ipv4_address: 172.30.0.2
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 9050"]
+      test:
+        [
+          "CMD-SHELL",
+          "nc -z 127.0.0.1 9051 && nc -z 172.28.0.2 9050 && nc -z 172.30.0.2 9050",
+        ]
       interval: 15s
       timeout: 5s
       retries: 20
       start_period: 40s
 
   searxng:
-    image: docker.io/searxng/searxng:latest
+    image: docker.io/searxng/searxng:latest@sha256:11a9b34cdc0b1ec2b991470a2762ecb5a1a531898289fb51dcd015260450729e
     restart: unless-stopped
     mem_limit: 512m
     volumes:
@@ -73,10 +129,11 @@ services:
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080/
       - SEARXNG_SECRET=${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
-      - SEARXNG_VALKEY_URL=valkey://valkey:6379/0
+      - SEARXNG_VALKEY_URL=valkey://:${VALKEY_PASSWORD:?set VALKEY_PASSWORD in .env}@valkey:6379/0
       - FORCE_OWNERSHIP=true
     networks:
-      - search
+      search:
+        ipv4_address: 172.28.0.3
     depends_on:
       valkey:
         condition: service_healthy
@@ -85,13 +142,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - CHOWN
       - SETGID
       - SETUID
       - DAC_OVERRIDE
 
   yacy:
-    image: docker.io/yacy/yacy_search_server:latest
+    image: docker.io/yacy/yacy_search_server:latest@sha256:ea4256d43315a69bcfdd980bff639187647379cb1acc93905133963e3a40bb02
     restart: unless-stopped
     mem_limit: 512m
     environment:
@@ -113,25 +169,24 @@ services:
         max-file: "2"
 
   yacy-init:
-    image: docker.io/curlimages/curl:8.11.1
+    image: docker.io/yacy/yacy_search_server:latest@sha256:ea4256d43315a69bcfdd980bff639187647379cb1acc93905133963e3a40bb02
     restart: on-failure
-    mem_limit: 128m
-    user: "0"
+    mem_limit: 512m
+    network_mode: "service:yacy"
     environment:
-      - YACY_URL=http://yacy:8090
+      - YACY_URL=http://127.0.0.1:8090
       - YACY_ADMIN_USER=${YACY_ADMIN_USER:?set YACY_ADMIN_USER in .env}
       - YACY_ADMIN_PASSWORD=${YACY_ADMIN_PASSWORD:?set YACY_ADMIN_PASSWORD in .env}
     volumes:
+      - yacy-data:/opt/yacy_search_server/DATA
       - ./yacy/init.sh:/init.sh:ro
-    networks:
-      - p2p
     entrypoint: ["/bin/sh", "/init.sh"]
     depends_on:
       yacy:
         condition: service_healthy
 
   qdrant:
-    image: docker.io/qdrant/qdrant:latest
+    image: docker.io/qdrant/qdrant:latest@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
     restart: unless-stopped
     mem_limit: 512m
     environment:
@@ -142,7 +197,7 @@ services:
       - vector
 
   qdrant-init:
-    image: docker.io/curlimages/curl:8.11.1
+    image: docker.io/curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
     restart: on-failure
     mem_limit: 128m
     user: "0"
@@ -171,13 +226,17 @@ services:
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - ALLOW_INSECURE_HTTP=${ALLOW_INSECURE_HTTP:-0}
     networks:
-      - app-internal
-      - search
-      - p2p
+      app-internal:
+        ipv4_address: 172.31.0.3
+      search:
+      p2p:
     depends_on:
-      - searxng
-      - yacy
-      - click-broker
+      searxng:
+        condition: service_started
+      yacy-init:
+        condition: service_completed_successfully
+      click-broker:
+        condition: service_started
 
   browser-sandbox:
     image: real-search-browser:local
@@ -186,18 +245,24 @@ services:
     restart: "no"
     runtime: runsc
     mem_limit: 1g
+    cpus: 1.0
     read_only: true
     user: "0"
     environment:
       - TARGET_URL=about:blank
       - TOR_IP=172.30.0.2
       - TOR_PORT=9050
-      - BROKER_IP=172.30.0.3
-      - VNC_TOKEN=canary-token-00000000000000000000000000000000
+      - TOR_SOCKS_USERNAME=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      - TOR_SOCKS_PASSWORD=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+      - BROKER_IP=172.32.0.2
+      - VNC_TOKEN=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      - VNC_PASSWORD=Canary42
       - SANDBOX_CANARY=1
     cap_drop:
       - ALL
     cap_add:
+      # Granted only so entrypoint.sh can install iptables, then dropped
+      # with setpriv before Firefox, socat, or VNC start.
       - NET_ADMIN
       - SETGID
       - SETUID
@@ -207,8 +272,10 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
       - /home/sandbox:rw,noexec,nosuid,nodev,uid=1000,gid=1000,size=128m
     networks:
-      sandbox:
+      sandbox-egress:
         ipv4_address: 172.30.0.4
+      sandbox-vnc:
+        ipv4_address: 172.32.0.4
     depends_on:
       tor:
         condition: service_healthy
@@ -218,12 +285,16 @@ services:
       context: ./sockfilter
     restart: unless-stopped
     mem_limit: 128m
+    user: "1000:1000"
+    group_add:
+      - ${DOCKER_GID:?set DOCKER_GID in .env to the GID of /var/run/docker.sock}
     environment:
       - BROWSER_IMAGE=real-search-browser:local
-      - SANDBOX_NETWORK=real-search_sandbox
+      - SANDBOX_VNC_NETWORK=real-search_sandbox-vnc
+      - SANDBOX_EGRESS_NETWORK=real-search_sandbox-egress
       - SANDBOX_RUNTIME=runsc
       - SANDBOX_TOR_IP=172.30.0.2
-      - SANDBOX_BROKER_IP=172.30.0.3
+      - SANDBOX_BROKER_IP=172.32.0.2
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     cap_drop:
@@ -255,12 +326,16 @@ services:
     environment:
       - DOCKER_HOST=tcp://sockfilter:2375
       - BROWSER_IMAGE=real-search-browser:local
-      - SANDBOX_NETWORK=real-search_sandbox
-      - TOR_HOST=tor
+      - SANDBOX_VNC_NETWORK=real-search_sandbox-vnc
+      - SANDBOX_EGRESS_NETWORK=real-search_sandbox-egress
+      - SANDBOX_TOR_IP=172.30.0.2
+      - SANDBOX_BROKER_IP=172.32.0.2
+      - BROKER_LISTEN_HOST=172.31.0.4
       - DOCKER_TLS_VERIFY=0
       - SANDBOX_RUNTIME=runsc
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - HEARTBEAT_TIMEOUT_SEC=90
+      - MAX_SESSION_LIFETIME_SEC=900
       - ALLOW_INSECURE_HTTP=${ALLOW_INSECURE_HTTP:-0}
     cap_drop:
       - ALL
@@ -268,8 +343,9 @@ services:
       - no-new-privileges:true
     networks:
       app-internal:
-      sandbox:
-        ipv4_address: 172.30.0.3
+        ipv4_address: 172.31.0.4
+      sandbox-vnc:
+        ipv4_address: 172.32.0.2
       sandbox-admin-net:
     depends_on:
       sockfilter:
@@ -289,8 +365,25 @@ services:
     environment:
       - CLICK_BROKER_TOKEN=${CLICK_BROKER_TOKEN:?set CLICK_BROKER_TOKEN in .env}
       - NGINX_ENVSUBST_FILTER=CLICK_BROKER_TOKEN
+    dns:
+      - 127.0.0.1
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /etc/nginx/conf.d:rw,noexec,nosuid,nodev,size=1m
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,uid=101,gid=101,mode=0700,size=16m
+      - /var/run:rw,noexec,nosuid,nodev,size=1m
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
     networks:
       app-internal:
+        ipv4_address: 172.31.0.2
       gateway-ingress:
         ipv4_address: 172.29.0.2
     healthcheck:
@@ -303,6 +396,5 @@ services:
       - click-broker
 
 volumes:
-  tor-data:
   yacy-data:
   qdrant-data:

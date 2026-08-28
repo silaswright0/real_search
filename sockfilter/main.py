@@ -12,7 +12,14 @@ from aiohttp import ClientSession, UnixConnector, web
 
 DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
 ALLOWED_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
-ALLOWED_NETWORK = os.environ.get("SANDBOX_NETWORK", "real-search_sandbox")
+ALLOWED_VNC_NETWORK = os.environ.get(
+    "SANDBOX_VNC_NETWORK",
+    "real-search_sandbox-vnc",
+)
+ALLOWED_EGRESS_NETWORK = os.environ.get(
+    "SANDBOX_EGRESS_NETWORK",
+    "real-search_sandbox-egress",
+)
 ALLOWED_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runsc").strip() or "runsc"
 ALLOWED_TOR_IP = os.environ.get("SANDBOX_TOR_IP", "172.30.0.2")
 ALLOWED_BROKER_IP = os.environ.get("SANDBOX_BROKER_IP", "172.30.0.3")
@@ -49,6 +56,7 @@ ALLOWED_CREATE_KEYS = {
 }
 ALLOWED_HOST_KEYS = {
     "Memory",
+    "NanoCpus",
     "NetworkMode",
     "ReadonlyRootfs",
     "CapAdd",
@@ -72,6 +80,9 @@ CONTAINER_MUTATE_RE = re.compile(
 CONTAINER_GET_RE = re.compile(r"^(/v[\d.]+)?/containers/[^/]+/json$")
 CONTAINER_DEL_RE = re.compile(r"^(/v[\d.]+)?/containers/[^/]+$")
 CONTAINER_LIST_RE = re.compile(r"^(/v[\d.]+)?/containers/json$")
+NETWORK_CONNECT_RE = re.compile(
+    rf"^(/v[\d.]+)?/networks/{re.escape(ALLOWED_EGRESS_NETWORK)}/connect$",
+)
 CONTAINER_REF_RE = re.compile(
     r"^(/v[\d.]+)?/containers/([^/]+)(?:/(start|stop|kill|wait|json))?$",
 )
@@ -89,6 +100,8 @@ def _allowed_path(method: str, path: str) -> bool:
         return True
     if method == "POST" and (CREATE_RE.match(path) or CONTAINER_MUTATE_RE.match(path)):
         return True
+    if method == "POST" and NETWORK_CONNECT_RE.match(path):
+        return True
     if method == "DELETE" and CONTAINER_DEL_RE.match(path):
         return True
     return False
@@ -104,6 +117,10 @@ async def _is_sandbox_container(http: ClientSession, path: str) -> bool:
         return False
     prefix = match.group(1) or "/v1.41"
     cid = match.group(2)
+    return await _is_sandbox_ref(http, prefix, cid)
+
+
+async def _is_sandbox_ref(http: ClientSession, prefix: str, cid: str) -> bool:
     async with http.get(f"http://docker{prefix}/containers/{cid}/json") as resp:
         if resp.status != 200:
             return False
@@ -144,7 +161,16 @@ def _validate_create(body: dict[str, Any]) -> str | None:
         if not separator or key in env:
             return "invalid environment"
         env[key] = value
-    if set(env) != {"TARGET_URL", "TOR_IP", "TOR_PORT", "BROKER_IP", "VNC_TOKEN"}:
+    if set(env) != {
+        "TARGET_URL",
+        "TOR_IP",
+        "TOR_PORT",
+        "TOR_SOCKS_USERNAME",
+        "TOR_SOCKS_PASSWORD",
+        "BROKER_IP",
+        "VNC_TOKEN",
+        "VNC_PASSWORD",
+    }:
         return "unexpected environment keys"
     if env["TOR_PORT"] != "9050":
         return "fixed Tor endpoint required"
@@ -156,8 +182,13 @@ def _validate_create(body: dict[str, Any]) -> str | None:
         return "private Tor and broker IPv4 addresses are required"
     if env["TOR_IP"] != ALLOWED_TOR_IP or env["BROKER_IP"] != ALLOWED_BROKER_IP:
         return "fixed sandbox-network endpoints are required"
-    if len(env["VNC_TOKEN"]) < 32:
-        return "VNC token is too short"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{43}", env["VNC_TOKEN"]):
+        return "VNC relay token has invalid format"
+    if not re.fullmatch(r"[A-Za-z0-9]{8}", env["VNC_PASSWORD"]):
+        return "VNC password has invalid format"
+    for key in ("TOR_SOCKS_USERNAME", "TOR_SOCKS_PASSWORD"):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{32}", env[key]):
+            return "Tor SOCKS credentials have invalid format"
     if body.get("HostConfig") is None:
         return "HostConfig is required"
     host = body.get("HostConfig") or {}
@@ -170,6 +201,8 @@ def _validate_create(body: dict[str, Any]) -> str | None:
         return "automatic removal required"
     if int(host.get("Memory") or 0) != 1024 * 1024 * 1024:
         return "memory limit must be 1 GiB"
+    if int(host.get("NanoCpus") or 0) != 1_000_000_000:
+        return "CPU limit must be exactly one core"
     if int(host.get("PidsLimit") or 0) != 256:
         return "PID limit must be 256"
     security_opt = set(_as_list(host.get("SecurityOpt")))
@@ -192,15 +225,15 @@ def _validate_create(body: dict[str, Any]) -> str | None:
     if set(networking) - {"EndpointsConfig"}:
         return "unknown NetworkingConfig keys"
     endpoints = networking.get("EndpointsConfig") or {}
-    if set(endpoints) - {ALLOWED_NETWORK}:
+    if set(endpoints) - {ALLOWED_VNC_NETWORK}:
         return "unexpected network endpoint"
     if any(value not in ({}, None) for value in endpoints.values()):
         return "network endpoint overrides are not allowed"
     nets = {mode} if mode else set()
     nets.update(endpoints)
     nets.discard("")
-    if nets != {ALLOWED_NETWORK}:
-        return f"network must be only {ALLOWED_NETWORK}"
+    if nets != {ALLOWED_VNC_NETWORK}:
+        return f"initial network must be only {ALLOWED_VNC_NETWORK}"
     false_only = {
         "Tty",
         "OpenStdin",
@@ -237,7 +270,8 @@ def _clean_create(body: dict[str, Any]) -> bytes:
         "Labels": {"real-search.sandbox": "true"},
         "HostConfig": {
             "Memory": 1024 * 1024 * 1024,
-            "NetworkMode": ALLOWED_NETWORK,
+            "NanoCpus": 1_000_000_000,
+            "NetworkMode": ALLOWED_VNC_NETWORK,
             "ReadonlyRootfs": True,
             "CapAdd": ["NET_ADMIN", "SETGID", "SETUID"],
             "CapDrop": ["ALL"],
@@ -295,6 +329,39 @@ async def handle(request: web.Request) -> web.StreamResponse:
         or CONTAINER_DEL_RE.match(path)
     )
     async with ClientSession(connector=unix) as http:
+        if NETWORK_CONNECT_RE.match(path) and request.method == "POST":
+            if request.rel_url.query:
+                return web.json_response(
+                    {"message": "network connect query denied"},
+                    status=403,
+                )
+            try:
+                connect_body = json.loads(raw.decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                return web.json_response(
+                    {"message": "invalid network connect body"},
+                    status=400,
+                )
+            if (
+                set(connect_body) != {"Container", "EndpointConfig"}
+                or connect_body.get("EndpointConfig") != {}
+            ):
+                return web.json_response(
+                    {"message": "network endpoint overrides are not allowed"},
+                    status=403,
+                )
+            cid = str(connect_body.get("Container") or "")
+            prefix_match = NETWORK_CONNECT_RE.match(path)
+            prefix = prefix_match.group(1) if prefix_match else None
+            if not await _is_sandbox_ref(http, prefix or "/v1.41", cid):
+                return web.json_response(
+                    {"message": "container is not an owned sandbox"},
+                    status=403,
+                )
+            raw = json.dumps(
+                {"Container": cid, "EndpointConfig": {}},
+                separators=(",", ":"),
+            ).encode("utf-8")
         if needs_owner_check and not await _is_sandbox_container(http, path):
             return web.json_response({"message": "container not a sandbox"}, status=403)
         async with http.request(request.method, url, headers=headers, data=raw) as resp:
@@ -312,6 +379,12 @@ async def handle(request: web.Request) -> web.StreamResponse:
 
 
 def main() -> None:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        raise RuntimeError("sockfilter must not run as root")
+    if not os.access(DOCKER_SOCK, os.R_OK | os.W_OK):
+        raise RuntimeError(
+            "docker.sock is not writable; set DOCKER_GID to the socket group"
+        )
     app = web.Application()
     app.router.add_route("*", "/{tail:.*}", handle)
     web.run_app(app, host="0.0.0.0", port=2375)

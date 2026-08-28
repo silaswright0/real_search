@@ -24,6 +24,7 @@ user_pref("beacon.enabled", false);
 user_pref("network.predictor.enabled", false);
 user_pref("network.proxy.no_proxies_on", "");
 user_pref("network.proxy.socks_remote_dns", true);
+user_pref("xpinstall.enabled", false);
 user_pref("network.trr.mode", 5);
 user_pref("dom.security.https_only_mode", true);
 user_pref("dom.security.https_only_mode_pbm", true);

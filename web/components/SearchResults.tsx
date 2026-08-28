@@ -1,6 +1,7 @@
 "use client";
 
 import type { SearchResult } from "@/lib/search/types";
+import { csrfHeaders, useCsrfToken } from "@/lib/csrf-context";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -20,6 +21,7 @@ export function SearchResults({ results }: SearchResultsProps) {
   const router = useRouter();
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const csrfToken = useCsrfToken();
 
   if (results.length === 0) {
     return <p className="text-muted">No results.</p>;
@@ -31,10 +33,9 @@ export function SearchResults({ results }: SearchResultsProps) {
     try {
       const response = await fetch("/api/secure-open", {
         method: "POST",
-        headers: {
+        headers: csrfHeaders(csrfToken, {
           "content-type": "application/json",
-          "x-real-search-csrf": "1",
-        },
+        }),
         body: JSON.stringify({ url }),
       });
       const payload = (await response.json()) as {
@@ -54,7 +55,7 @@ export function SearchResults({ results }: SearchResultsProps) {
       } catch {
         await fetch(`/api/secure-open/${payload.id}`, {
           method: "DELETE",
-          headers: { "x-real-search-csrf": "1" },
+          headers: csrfHeaders(csrfToken),
         });
         setError("Session storage is unavailable; the sandbox was closed.");
         return;

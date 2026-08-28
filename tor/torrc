@@ -1,7 +1,8 @@
-SocksPort 0.0.0.0:9050 IsolateClientAddr IsolateSOCKSAuth
-SocksPolicy accept 10.0.0.0/8
-SocksPolicy accept 172.16.0.0/12
-SocksPolicy accept 192.168.0.0/16
+# Tor itself only listens on loopback. Public SOCKS endpoints are the
+# auth gate, which rejects unauthenticated clients and forwards credentials
+# so IsolateSOCKSAuth can create distinct circuits.
+SocksPort 127.0.0.1:9051 IsolateSOCKSAuth KeepAliveIsolateSOCKSAuth
+SocksPolicy accept 127.0.0.1
 SocksPolicy reject *
 DataDirectory /var/lib/tor
 Log notice stdout

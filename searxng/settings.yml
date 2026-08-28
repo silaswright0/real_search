@@ -29,13 +29,19 @@ server:
   method: "POST"
 
 valkey:
-  # Overwritten by ${SEARXNG_VALKEY_URL}
-  url: valkey://valkey:6379/0
+  # Overwritten by ${SEARXNG_VALKEY_URL}, which must include the Valkey password.
+  url: valkey://:must-be-overridden-by-SEARXNG_VALKEY_URL@valkey:6379/0
 
 outgoing:
   request_timeout: 15.0
   max_request_timeout: 30.0
   extra_proxy_timeout: 10.0
   using_tor_proxy: true
+  # New SOCKS connections only: the Tor auth gate mints unique
+  # IsolateSOCKSAuth credentials per connection, which is the per-query circuit.
+  enable_http2: false
+  pool_connections: 8
+  pool_maxsize: 1
+  keepalive_expiry: 0.0
   proxies:
-    all://: socks5h://tor:9050
+    all://: socks5h://searxng:circuit-isolation@172.28.0.2:9050

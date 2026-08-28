@@ -33,6 +33,25 @@
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
     "PasswordManagerEnabled": false,
+    "ClientRejectInternalAddresses": true,
+    "ClientDNSRejectInternalAddresses": true,
+    "InstallAddonsPermission": {
+      "Default": false
+    },
+    "ExtensionSettings": {
+      "*": {
+        "installation_mode": "blocked",
+        "install_sources": [],
+        "allowed_types": [],
+        "blocked_install_message": "Extensions are disabled in the isolated browser."
+      }
+    },
+    "LocalNetworkAccess": {
+      "Enabled": true,
+      "BlockTrackers": true,
+      "EnablePrompting": false,
+      "Locked": true
+    },
     "PDFjs": {
       "Enabled": false,
       "EnablePermissions": false
@@ -66,6 +85,10 @@
       "network.file.disable_unc_paths": { "Value": true, "Status": "locked" },
       "network.proxy.no_proxies_on": { "Value": "", "Status": "locked" },
       "network.proxy.socks_remote_dns": { "Value": true, "Status": "locked" },
+      "network.proxy.allow_hijacking_localhost": { "Value": false, "Status": "locked" },
+      "xpinstall.enabled": { "Value": false, "Status": "locked" },
+      "xpinstall.signatures.required": { "Value": true, "Status": "locked" },
+      "extensions.autoDisableScopes": { "Value": 15, "Status": "locked" },
       "dom.security.https_only_mode": { "Value": true, "Status": "locked" },
       "dom.security.https_only_mode_pbm": { "Value": true, "Status": "locked" },
       "pdfjs.disabled": { "Value": true, "Status": "locked" },

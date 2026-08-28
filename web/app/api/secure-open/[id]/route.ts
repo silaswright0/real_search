@@ -1,8 +1,8 @@
 import {
   brokerHeaders,
   brokerUrl,
-  isSameOriginMutation,
 } from "@/lib/click-broker";
+import { isAuthorizedMutation } from "@/lib/local-auth";
 import {
   secureCookieFor,
   viewerWebsocketPath,
@@ -16,8 +16,8 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!isSameOriginMutation(request)) {
-    return NextResponse.json({ error: "CSRF validation failed" }, { status: 403 });
+  if (!isAuthorizedMutation(request)) {
+    return NextResponse.json({ error: "authorization failed" }, { status: 403 });
   }
   const { id } = await context.params;
   if (!/^[a-f0-9]{32}$/.test(id)) {

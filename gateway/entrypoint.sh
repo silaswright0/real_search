@@ -2,9 +2,9 @@
 set -eu
 
 # gateway-ingress is intentionally host-reachable. Refuse to proxy sensitive
-# requests unless the host DOCKER-USER policy blocks new outbound connections.
+# requests if the host bridge policy does not block new outbound connections.
 if wget -q -T 3 -O /dev/null http://1.1.1.1/ 2>/dev/null; then
-  echo "gateway has direct internet egress; install the DOCKER-USER policy" >&2
+  echo "gateway has direct internet egress; install the nftables policy" >&2
   exit 1
 fi
 

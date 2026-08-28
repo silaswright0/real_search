@@ -55,7 +55,7 @@ inside WSL 2; do not enable Docker Desktop integration for this distribution:
 
 ```bash
 sudo apt update
-sudo apt install -y ca-certificates curl gnupg
+sudo apt install -y ca-certificates curl gnupg nftables
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
@@ -111,19 +111,26 @@ Official references:
 ```bash
 cp .env.example .env
 # Generate independent values for SEARXNG_SECRET, QDRANT_API_KEY,
-# CLICK_BROKER_TOKEN, and a YaCy password:
+# CLICK_BROKER_TOKEN, VALKEY_PASSWORD, and a YaCy password:
 python -c "import secrets; print(secrets.token_hex(32))"
-# Required after every Docker daemon/firewall restart. This blocks new outbound
-# flows from the host-published gateway while retaining established UI replies.
+# SOCKS/Docker host: set DOCKER_GID to `stat -c %g /var/run/docker.sock`
+# Required after every Docker daemon/firewall restart. This nftables policy
+# blocks all new traffic entering from the host-published gateway bridge.
 sudo sh gateway/install-egress-firewall.sh
 docker compose up --build
+docker compose logs -f web
 ```
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish `3000` on `0.0.0.0`.
-The gateway refuses to start if a direct IPv4 egress probe succeeds. The
-`DOCKER-USER` rule is the authoritative control, and a recurring guard stops
-nginx if that policy disappears while the stack is running. Reinstall the rule
-after Docker or the host firewall is restarted.
+Only `127.0.0.1:3000` and `localhost:3000` Host headers are accepted. The web
+container prints a one-time startup token at boot; paste it once to unlock.
+The token is consumed on unlock and cannot be reused from those logs.
+The server then issues a signed, 12-hour HttpOnly local session and a
+per-session CSRF token. Restarting `web` mints a new token. The gateway refuses to start if a direct
+IPv4 egress probe succeeds. The bridge-based nftables rule is the authoritative
+control across both address families and all protocols, while a recurring
+guard stops nginx if direct IPv4 egress appears. Reinstall the rule after
+Docker or the host firewall is restarted.
 
 Search terms are held only in the current page's JavaScript memory and sent to
 `/api/search` in a POST body. They are not placed in browser URLs, referrers, or
@@ -147,12 +154,14 @@ Titles do not open the host browser. They start `real-search-browser:local`:
 9. The trusted Next.js bundle runs the noVNC RFB client directly. nginx accepts only the WebSocket endpoint, converts the HttpOnly cookie to websockify's internal token query, strips the cookie, and authenticates to the broker
 10. Destroy on End session, Firefox close, or 90 seconds after the viewer WebSocket disconnects
 
-`sockfilter` is the only service with the Docker socket. It is reachable only from `click-broker` on `real-search_sandbox-admin`; it rejects unknown create and `HostConfig` keys, exact-matches the mandatory `runsc` runtime and all sandbox invariants, then rebuilds a minimal Docker create payload instead of forwarding caller JSON.
+`sockfilter` is the only service with the Docker socket. It is reachable only from `click-broker` on `real-search_sandbox-admin`; it rejects unknown create and `HostConfig` keys, exact-matches the mandatory `runsc` runtime, one-core CPU quota, and all other sandbox invariants, then rebuilds a minimal Docker create payload instead of forwarding caller JSON. Python dependencies are transitively pinned with distribution hashes and installed with `--require-hashes`.
 
 `tor` is the only service permitted to create internet flows. `gateway` also
 joins `real-search_gateway-ingress` so Docker can publish loopback port 3000,
-but its fixed `172.29.0.2` address is denied new outbound flows in
-`DOCKER-USER`. `gateway`, `web`, and `click-broker` communicate over
+but nftables drops every new flow entering from its stable
+`br-rs-ingress` bridge regardless of source address. The gateway has no
+external DNS resolver and drops all capabilities except those required for
+nginx to initialize and lower privilege. `gateway`, `web`, and `click-broker` communicate over
 `real-search_app-internal`; the additional search, P2P, sandbox, admin, and
 vector networks are internal.
 
@@ -161,17 +170,19 @@ Before `sockfilter` receives access to the Docker socket, the
 capability/tmpfs/network controls, and the real entrypoint. It must bring up
 Xvfb, x11vnc, websockify, and socat and complete a Tor SOCKS handshake.
 
-React Strict Mode does **not** delete the session on remount. The broker refreshes the lease while the noVNC WebSocket exists, so browser timer throttling cannot kill a connected session. On restart, the broker removes labeled orphan sandboxes before accepting new sessions.
+React Strict Mode does **not** delete the session on remount. The broker refreshes the lease while the noVNC WebSocket exists, so browser timer throttling cannot kill a connected session. Capacity is reserved before container creation and reconciled against labeled Docker containers, preventing concurrent requests from bypassing the session limit. Failed removals remain as tombstones, retry with exponential backoff, and count against capacity; startup fails closed if labeled orphans cannot be removed.
 
 ## Environment
 
 | Variable | Purpose |
 | --- | --- |
 | `SEARXNG_SECRET` | SearXNG secret |
-| `YACY_ADMIN_*` | Required YaCy administrator credentials |
+| `YACY_ADMIN_*` | Required YaCy administrator credentials; `yacy-init` sets them with `passwd.sh` |
 | `YACY_RESOURCE` | `local` |
 | `QDRANT_API_KEY` | Required API key for the isolated Qdrant service |
 | `CLICK_BROKER_TOKEN` | Required random service token used by Next.js/nginx to authenticate every broker request |
+| `VALKEY_PASSWORD` | Required Valkey `requirepass`; SearXNG authenticates with `SEARXNG_VALKEY_URL` |
+| `DOCKER_GID` | Host GID that owns `/var/run/docker.sock`; sockfilter runs as uid 1000 in this group |
 | `ALLOW_INSECURE_HTTP` | `0` by default; set `1` only to permit HTTP targets |
 
 ## Services

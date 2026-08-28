@@ -2,6 +2,7 @@
 
 import { SearchBar } from "@/components/SearchBar";
 import { SearchResults } from "@/components/SearchResults";
+import { csrfHeaders, useCsrfToken } from "@/lib/csrf-context";
 import { parseMode } from "@/lib/mode";
 import type { SearchMode, SearchResponse } from "@/lib/search/types";
 import { useActiveQuery } from "@/lib/use-active-query";
@@ -25,16 +26,16 @@ function QueryResults({
 }) {
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const csrfToken = useCsrfToken();
 
   useEffect(() => {
     const controller = new AbortController();
 
     fetch("/api/search", {
       method: "POST",
-      headers: {
+      headers: csrfHeaders(csrfToken, {
         "content-type": "application/json",
-        "x-real-search-csrf": "1",
-      },
+      }),
       body: JSON.stringify({ query: q, mode, pageno }),
       cache: "no-store",
       signal: controller.signal,
@@ -63,7 +64,7 @@ function QueryResults({
       });
 
     return () => controller.abort();
-  }, [q, mode, pageno]);
+  }, [csrfToken, q, mode, pageno]);
 
   if (loading) {
     return <p className="text-muted">Searching…</p>;

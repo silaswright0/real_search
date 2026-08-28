@@ -2,4 +2,5 @@
 !.gitignore
 !Dockerfile
 !main.py
+!requirements.in
 !requirements.txt

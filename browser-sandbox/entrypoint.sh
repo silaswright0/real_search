@@ -3,14 +3,19 @@ set -eu
 
 TOR_IP="${TOR_IP:-}"
 TOR_PORT="${TOR_PORT:-9050}"
+TOR_SOCKS_USERNAME="${TOR_SOCKS_USERNAME:-}"
+TOR_SOCKS_PASSWORD="${TOR_SOCKS_PASSWORD:-}"
 BROKER_IP="${BROKER_IP:-}"
 TARGET_URL="${TARGET_URL:-}"
 VNC_TOKEN="${VNC_TOKEN:-}"
+VNC_PASSWORD="${VNC_PASSWORD:-}"
 DISPLAY_NUM="${DISPLAY_NUM:-:1}"
 SANDBOX_CANARY="${SANDBOX_CANARY:-0}"
 
-if [ -z "$TARGET_URL" ] || [ -z "$VNC_TOKEN" ] || [ -z "$TOR_IP" ] || [ -z "$BROKER_IP" ]; then
-  echo "TARGET_URL, VNC_TOKEN, TOR_IP and BROKER_IP are required" >&2
+if [ -z "$TARGET_URL" ] || [ -z "$VNC_TOKEN" ] || [ -z "$VNC_PASSWORD" ] \
+  || [ -z "$TOR_IP" ] || [ -z "$TOR_SOCKS_USERNAME" ] \
+  || [ -z "$TOR_SOCKS_PASSWORD" ] || [ -z "$BROKER_IP" ]; then
+  echo "target, relay, VNC, Tor authentication and broker settings are required" >&2
   exit 1
 fi
 
@@ -19,22 +24,56 @@ if ! printf '%s\n' "$TOR_IP" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$' \
   echo "TOR_IP and BROKER_IP must be IPv4 literals" >&2
   exit 1
 fi
-
-if ! iptables -P OUTPUT DROP || ! iptables -F OUTPUT; then
-  echo "could not enforce IPv4 Tor-only firewall" >&2
+if ! printf '%s\n' "$VNC_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
+  || ! printf '%s\n' "$VNC_PASSWORD" | grep -Eq '^[A-Za-z0-9]{8}$' \
+  || ! printf '%s\n' "$TOR_SOCKS_USERNAME" | grep -Eq '^[A-Za-z0-9_-]{32}$' \
+  || ! printf '%s\n' "$TOR_SOCKS_PASSWORD" | grep -Eq '^[A-Za-z0-9_-]{32}$'; then
+  echo "sandbox credentials have invalid format" >&2
   exit 1
 fi
-iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A OUTPUT -p tcp -d "$TOR_IP" --dport "$TOR_PORT" -j ACCEPT
-# Statelessly permit only replies from websockify to the broker. gVisor does
-# not implement the Linux conntrack matcher.
-iptables -A OUTPUT -p tcp -s 0.0.0.0/0 --sport 6080 -d "$BROKER_IP" -j ACCEPT
 
-if ip6tables -P OUTPUT DROP 2>/dev/null && ip6tables -F OUTPUT 2>/dev/null; then
-  ip6tables -A OUTPUT -o lo -j ACCEPT
-elif [ -s /proc/net/if_inet6 ] \
-  && awk '$2 != "01" { found=1 } END { exit found ? 0 : 1 }' /proc/net/if_inet6; then
-  echo "could not enforce IPv6 deny policy on an IPv6-enabled interface" >&2
+net_admin_effective() {
+  eff_hex="$(awk '/^CapEff:/ { print $2 }' /proc/self/status)"
+  eff="$((0x${eff_hex}))"
+  # CAP_NET_ADMIN is capability bit 12.
+  [ "$((eff & 4096))" -ne 0 ]
+}
+
+if [ "${SANDBOX_NET_ADMIN_DROPPED:-0}" != "1" ]; then
+  if ! net_admin_effective; then
+    echo "NET_ADMIN is required to install the Tor-only firewall" >&2
+    exit 1
+  fi
+  if ! iptables -P OUTPUT DROP || ! iptables -F OUTPUT; then
+    echo "could not enforce IPv4 Tor-only firewall" >&2
+    exit 1
+  fi
+  iptables -A OUTPUT -o lo -j ACCEPT
+  iptables -A OUTPUT -p tcp -d "$TOR_IP" --dport "$TOR_PORT" -j ACCEPT
+  # Statelessly permit only replies from websockify to the broker. gVisor does
+  # not implement the Linux conntrack matcher.
+  iptables -A OUTPUT -p tcp -s 0.0.0.0/0 --sport 6080 -d "$BROKER_IP" -j ACCEPT
+
+  if ip6tables -P OUTPUT DROP 2>/dev/null && ip6tables -F OUTPUT 2>/dev/null; then
+    ip6tables -A OUTPUT -o lo -j ACCEPT
+  elif [ -s /proc/net/if_inet6 ] \
+    && awk '$2 != "01" { found=1 } END { exit found ? 0 : 1 }' /proc/net/if_inet6; then
+    echo "could not enforce IPv6 deny policy on an IPv6-enabled interface" >&2
+    exit 1
+  fi
+
+  # Docker still grants NET_ADMIN at start so iptables can run. Drop it before
+  # Firefox or VNC start so a compromised guest cannot rewrite the filter.
+  export SANDBOX_NET_ADMIN_DROPPED=1
+  exec setpriv \
+    --bounding-set=-net_admin \
+    --inh-caps=-net_admin \
+    --ambient-caps=-net_admin \
+    -- /entrypoint.sh
+fi
+
+if net_admin_effective; then
+  echo "NET_ADMIN remained effective after capability drop" >&2
   exit 1
 fi
 
@@ -46,7 +85,10 @@ export DISPLAY="$DISPLAY_NUM"
 runuser -u sandbox -- install -d -m 700 /home/sandbox/profile
 runuser -u sandbox -- install -d -m 700 /home/sandbox/Downloads
 runuser -u sandbox -- install -m 600 /opt/firefox-profile/user.js /home/sandbox/profile/user.js
-VNC_PASSWORD="$(printf '%s' "$VNC_TOKEN" | sha256sum | cut -c1-8)"
+runuser -u sandbox -- sh -c '
+  printf "user_pref(\"network.proxy.socks_username\", \"%s\");\n" "$1"
+  printf "user_pref(\"network.proxy.socks_password\", \"%s\");\n" "$2"
+' sh "$TOR_SOCKS_USERNAME" "$TOR_SOCKS_PASSWORD" >> /home/sandbox/profile/user.js
 runuser -u vnc -- sh -c 'umask 077; printf "%s: 127.0.0.1:5900\n" "$1" > /tmp/websockify.tokens' sh "$VNC_TOKEN"
 runuser -u vnc -- x11vnc -storepasswd "$VNC_PASSWORD" /tmp/vnc.pass >/dev/null
 runuser -u vnc -- Xvfb "$DISPLAY_NUM" -screen 0 1280x800x24 -nolisten tcp -ac &
@@ -71,20 +113,30 @@ trap cleanup EXIT INT TERM
 if [ "$SANDBOX_CANARY" = "1" ]; then
   sleep 0.5
   kill -0 "$SOCAT_PID" "$XVFB_PID" "$VNC_PID" "$WS_PID"
+  if net_admin_effective; then
+    echo "canary still has NET_ADMIN" >&2
+    exit 1
+  fi
   if ! printf 'GET /vnc.html HTTP/1.0\r\n\r\n' \
     | socat -T 3 - TCP:127.0.0.1:6080 \
     | grep -q '200 OK'; then
     echo "noVNC canary failed" >&2
     exit 1
   fi
+  USER_LENGTH="$(printf '%03o' "${#TOR_SOCKS_USERNAME}")"
+  PASS_LENGTH="$(printf '%03o' "${#TOR_SOCKS_PASSWORD}")"
   SOCKS_REPLY="$(
-    printf '\005\001\000' \
+    {
+      printf '\005\001\002'
+      printf "\\001\\${USER_LENGTH}%s\\${PASS_LENGTH}%s" \
+        "$TOR_SOCKS_USERNAME" "$TOR_SOCKS_PASSWORD"
+    } \
       | socat -T 3 - TCP:127.0.0.1:9050 \
       | od -An -tx1 \
       | tr -d ' \n'
   )"
-  if [ "$SOCKS_REPLY" != "0500" ]; then
-    echo "Tor SOCKS canary failed" >&2
+  if [ "$SOCKS_REPLY" != "05020100" ]; then
+    echo "authenticated Tor SOCKS canary failed" >&2
     exit 1
   fi
   echo "runsc sandbox canary passed"

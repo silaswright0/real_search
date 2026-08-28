@@ -1,6 +1,7 @@
 "use client";
 
 import { storeMode } from "@/lib/mode";
+import { useCsrfToken } from "@/lib/csrf-context";
 import { useSearchMode } from "@/lib/use-search-mode";
 import { setActiveQuery, useActiveQuery } from "@/lib/use-active-query";
 import type { SearchMode } from "@/lib/search/types";
@@ -16,6 +17,7 @@ export function SearchBar({ initialMode }: SearchBarProps) {
   const activeQuery = useActiveQuery();
   const [query, setQuery] = useState(activeQuery);
   const [mode] = useSearchMode(initialMode);
+  const csrfToken = useCsrfToken();
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,6 +54,7 @@ export function SearchBar({ initialMode }: SearchBarProps) {
       />
       <input type="hidden" name="mode" value={mode} />
       <input type="hidden" name="pageno" value="1" />
+      <input type="hidden" name="csrf" value={csrfToken} />
     </form>
   );
 }
