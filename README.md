@@ -117,6 +117,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 # Required after every Docker daemon/firewall restart. This nftables policy
 # blocks all new traffic entering from the host-published gateway bridge.
 sudo sh gateway/install-egress-firewall.sh
+./build-sandbox.sh
 docker compose up --build
 docker compose logs -f web
 ```
@@ -141,7 +142,8 @@ query.
 
 ## Click hop
 
-Titles do not open the host browser. They start `real-search-browser:local`:
+Titles do not open the host browser. They start the content-pinned
+`real-search-browser:<gitsha>-<hash>` image from `./build-sandbox.sh`:
 
 1. HTTPS-only URL allowlist (no loopback/private/decimal IPs or userinfo); HTTP requires `ALLOW_INSECURE_HTTP=1`
 2. Join **only** `real-search_sandbox` (`internal: true` — no default gateway to the internet)

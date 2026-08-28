@@ -11,7 +11,39 @@ from typing import Any
 from aiohttp import ClientSession, UnixConnector, web
 
 DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
-ALLOWED_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
+SANDBOX_IMAGE_PREFIX = "real-search-browser"
+PINNED_TAG_RE = re.compile(r"^[0-9a-f]{7,40}-[0-9a-f]{12}$")
+
+
+def _pinned_allowed_image() -> str:
+    tag = os.environ.get("SANDBOX_IMAGE_TAG", "").strip()
+    image = os.environ.get("BROWSER_IMAGE", "").strip()
+    if tag and not PINNED_TAG_RE.fullmatch(tag):
+        raise RuntimeError(
+            "SANDBOX_IMAGE_TAG must be gitsha-contenthash from ./build-sandbox.sh"
+        )
+    if not image:
+        if not tag:
+            raise RuntimeError(
+                "SANDBOX_IMAGE_TAG is required; run ./build-sandbox.sh"
+            )
+        image = f"{SANDBOX_IMAGE_PREFIX}:{tag}"
+    name, separator, image_tag = image.partition(":")
+    if (
+        separator != ":"
+        or name != SANDBOX_IMAGE_PREFIX
+        or image_tag in {"", "local", "latest"}
+        or not PINNED_TAG_RE.fullmatch(image_tag)
+    ):
+        raise RuntimeError(
+            "BROWSER_IMAGE must be real-search-browser:<gitsha-contenthash>"
+        )
+    if tag and image_tag != tag:
+        raise RuntimeError("BROWSER_IMAGE does not match SANDBOX_IMAGE_TAG")
+    return image
+
+
+ALLOWED_IMAGE = _pinned_allowed_image()
 ALLOWED_VNC_NETWORK = os.environ.get(
     "SANDBOX_VNC_NETWORK",
     "real-search_sandbox-vnc",

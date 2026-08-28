@@ -125,12 +125,12 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     volumes:
-      - ./searxng:/etc/searxng:rw
+      - ./searxng:/etc/searxng:ro
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080/
       - SEARXNG_SECRET=${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
       - SEARXNG_VALKEY_URL=valkey://:${VALKEY_PASSWORD:?set VALKEY_PASSWORD in .env}@valkey:6379/0
-      - FORCE_OWNERSHIP=true
+      - FORCE_OWNERSHIP=false
     networks:
       search:
         ipv4_address: 172.28.0.3
@@ -239,7 +239,7 @@ services:
         condition: service_started
 
   browser-sandbox:
-    image: real-search-browser:local
+    image: real-search-browser:${SANDBOX_IMAGE_TAG:?run_build-sandbox.sh}
     build:
       context: ./browser-sandbox
     restart: "no"
@@ -289,7 +289,8 @@ services:
     group_add:
       - ${DOCKER_GID:?set DOCKER_GID in .env to the GID of /var/run/docker.sock}
     environment:
-      - BROWSER_IMAGE=real-search-browser:local
+      - SANDBOX_IMAGE_TAG=${SANDBOX_IMAGE_TAG:?run_build-sandbox.sh}
+      - BROWSER_IMAGE=real-search-browser:${SANDBOX_IMAGE_TAG:?run_build-sandbox.sh}
       - SANDBOX_VNC_NETWORK=real-search_sandbox-vnc
       - SANDBOX_EGRESS_NETWORK=real-search_sandbox-egress
       - SANDBOX_RUNTIME=runsc
@@ -325,7 +326,8 @@ services:
     mem_limit: 256m
     environment:
       - DOCKER_HOST=tcp://sockfilter:2375
-      - BROWSER_IMAGE=real-search-browser:local
+      - SANDBOX_IMAGE_TAG=${SANDBOX_IMAGE_TAG:?run_build-sandbox.sh}
+      - BROWSER_IMAGE=real-search-browser:${SANDBOX_IMAGE_TAG:?run_build-sandbox.sh}
       - SANDBOX_VNC_NETWORK=real-search_sandbox-vnc
       - SANDBOX_EGRESS_NETWORK=real-search_sandbox-egress
       - SANDBOX_TOR_IP=172.30.0.2

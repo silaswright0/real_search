@@ -20,7 +20,7 @@ from docker.errors import APIError, NotFound
 
 HEARTBEAT_TIMEOUT_SEC = int(os.environ.get("HEARTBEAT_TIMEOUT_SEC", "90"))
 MAX_SESSION_LIFETIME_SEC = int(os.environ.get("MAX_SESSION_LIFETIME_SEC", "900"))
-BROWSER_IMAGE = os.environ.get("BROWSER_IMAGE", "real-search-browser:local")
+SANDBOX_IMAGE_PREFIX = "real-search-browser"
 SANDBOX_VNC_NETWORK = os.environ.get(
     "SANDBOX_VNC_NETWORK",
     "real-search_sandbox-vnc",
@@ -37,6 +37,38 @@ BROKER_TOKEN = os.environ.get("CLICK_BROKER_TOKEN", "")
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "3"))
 ALLOW_INSECURE_HTTP = os.environ.get("ALLOW_INSECURE_HTTP", "0") == "1"
 SANDBOX_LABEL = "real-search.sandbox=true"
+PINNED_TAG_RE = re.compile(r"^[0-9a-f]{7,40}-[0-9a-f]{12}$")
+
+
+def _pinned_browser_image() -> str:
+    tag = os.environ.get("SANDBOX_IMAGE_TAG", "").strip()
+    image = os.environ.get("BROWSER_IMAGE", "").strip()
+    if tag and not PINNED_TAG_RE.fullmatch(tag):
+        raise RuntimeError(
+            "SANDBOX_IMAGE_TAG must be gitsha-contenthash from ./build-sandbox.sh"
+        )
+    if not image:
+        if not tag:
+            raise RuntimeError(
+                "SANDBOX_IMAGE_TAG is required; run ./build-sandbox.sh"
+            )
+        image = f"{SANDBOX_IMAGE_PREFIX}:{tag}"
+    name, separator, image_tag = image.partition(":")
+    if (
+        separator != ":"
+        or name != SANDBOX_IMAGE_PREFIX
+        or image_tag in {"", "local", "latest"}
+        or not PINNED_TAG_RE.fullmatch(image_tag)
+    ):
+        raise RuntimeError(
+            "BROWSER_IMAGE must be real-search-browser:<gitsha-contenthash>"
+        )
+    if tag and image_tag != tag:
+        raise RuntimeError("BROWSER_IMAGE does not match SANDBOX_IMAGE_TAG")
+    return image
+
+
+BROWSER_IMAGE = _pinned_browser_image()
 
 if len(BROKER_TOKEN) < 32:
     raise RuntimeError("CLICK_BROKER_TOKEN must be at least 32 characters")

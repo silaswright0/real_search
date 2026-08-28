@@ -1,3 +1,4 @@
 .env
+.sandbox-image-tag
 *.pem
 .DS_Store
