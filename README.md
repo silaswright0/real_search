@@ -1,6 +1,6 @@
 # real search
 
-Personal metasearch. Queries go **SearXNG → Tor SOCKS5h**. Result clicks spawn an ephemeral Firefox sandbox with no direct internet; the only egress is Tor. The guest is shown over noVNC. The UI is bound to **127.0.0.1:3000** only.
+Personal metasearch. Queries go **SearXNG → Tor SOCKS5h**. Result clicks spawn an ephemeral Firefox sandbox with no direct internet; the only egress is Tor. The guest is shown over noVNC. The UI is bound to **localhost:3000** only.
 
 Toggle is **Web vs Peer to peer**.
 
@@ -119,13 +119,14 @@ python -c "import secrets; print(secrets.token_hex(32))"
 # Required after every Docker daemon/firewall restart. This nftables policy
 # blocks all new traffic entering from the host-published gateway bridge.
 sudo sh gateway/install-egress-firewall.sh
-./build-sandbox.sh
-docker compose up --build
-docker compose logs -f web
+sudo ./build-sandbox.sh
+sudo chown "$USER:$USER" .env
+sudo docker compose up --build
+sudo docker compose logs -f web
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish `3000` on `0.0.0.0`.
-Only `127.0.0.1:3000` and `localhost:3000` Host headers are accepted. The web
+Open [http://localhost:3000](http://localhost:3000). Do not publish `3000` on `0.0.0.0`.
+Only `localhost:3000` and `127.0.0.1:3000` Host headers are accepted. The web
 container prints a one-time startup token at boot; paste it once to unlock.
 The token is consumed on unlock and cannot be reused from those logs.
 The server then issues a signed, 12-hour HttpOnly local session and a
@@ -193,7 +194,7 @@ React Strict Mode does **not** delete the session on remount. The broker refresh
 
 | Service | Role | Host ports |
 | --- | --- | --- |
-| `gateway` | nginx: Next.js + WebSocket to broker | `127.0.0.1:3000` |
+| `gateway` | nginx: Next.js + WebSocket to broker | `localhost:3000` |
 | `web` | Next.js | none |
 | `searxng` | Metasearch | none |
 | `tor` | Only internet-egress service; SOCKS for search + sandbox nets | none |

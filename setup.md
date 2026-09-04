@@ -39,19 +39,20 @@ Put a **different** 32-byte hex value in each of:
 | `YACY_RESOURCE` | leave as `local` |
 | `ALLOW_INSECURE_HTTP` | leave as `0` unless you intentionally allow HTTP click targets |
 
-Then set the Docker socket group and start:
+Then set the Docker socket group and start. Use `sudo` for Docker here, matching the prerequisite `sudo docker` checks. If `docker info` already works without `sudo` (your user is in the `docker` group), omit `sudo` and skip the `chown`.
 
 ```bash
 stat -c %g /var/run/docker.sock    # paste the number into DOCKER_GID in .env
 sudo sh gateway/install-egress-firewall.sh
-./build-sandbox.sh                 # writes SANDBOX_IMAGE_TAG into .env
-docker compose up --build
-docker compose logs -f web
+sudo ./build-sandbox.sh            # writes SANDBOX_IMAGE_TAG into .env
+sudo chown "$USER:$USER" .env      # the build ran as root
+sudo docker compose up --build
+sudo docker compose logs -f web
 ```
 
 ## Unlock
 
-1. Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish port `3000` on `0.0.0.0`.
+1. Open [http://localhost:3000](http://localhost:3000). Do not publish port `3000` on `0.0.0.0`.
 2. Copy the one-time startup token from the `web` container logs.
 3. Paste it once on the unlock page.
 
@@ -63,24 +64,25 @@ If `.env` is already filled:
 
 ```bash
 sudo sh gateway/install-egress-firewall.sh
-docker compose up --build
-docker compose logs -f web
+sudo docker compose up --build
+sudo docker compose logs -f web
 ```
 
 Reinstall the nftables rule after every Docker daemon or host-firewall restart. The gateway will refuse to start if it still has direct internet egress.
 
-Rerun `./build-sandbox.sh` after any change under `browser-sandbox/`, then `docker compose up --build` again.
+Rerun `sudo ./build-sandbox.sh` after any change under `browser-sandbox/`, then `sudo docker compose up --build` again. If the build ran as root, `sudo chown "$USER:$USER" .env`.
 
 ## Stop
 
 ```bash
-docker compose down
+sudo docker compose down
 ```
 
 ## If it does not start
 
 - **Gateway exits immediately** — nftables is missing or was wiped. Run `sudo sh gateway/install-egress-firewall.sh` again.
-- **sockfilter never becomes healthy** — `runsc` is missing, or the sandbox canary failed. Check `docker compose logs browser-sandbox`.
-- **Compose interpolation error for `SANDBOX_IMAGE_TAG`** — run `./build-sandbox.sh` first.
+- **sockfilter never becomes healthy** — `runsc` is missing, or the sandbox canary failed. Check `sudo docker compose logs browser-sandbox`.
+- **`permission denied` on `docker.sock`** — prefix the command with `sudo`. `DOCKER_GID` does not grant your user Docker access.
+- **Compose interpolation error for `SANDBOX_IMAGE_TAG`** — run `sudo ./build-sandbox.sh` first.
 - **Compose interpolation error for `DOCKER_GID`** — set it to `stat -c %g /var/run/docker.sock`.
 - **Unlock token rejected** — it was already consumed, or `web` was restarted and a new token was printed. Use the latest `web` log banner.
