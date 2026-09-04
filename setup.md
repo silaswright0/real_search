@@ -1,0 +1,86 @@
+# Setup
+
+Run everything in **WSL 2 Ubuntu** with native **Docker CE** and **gVisor `runsc`**. Docker Desktop is unsupported. Keep this repo on the Linux filesystem (for example `~/src/real_search`), not under `/mnt/c`.
+
+Expect **~5GB+ RAM** with a sandbox open.
+
+## Prerequisites
+
+Confirm these before the first start:
+
+```bash
+sudo docker info          # WSL-native daemon, not Docker Desktop
+sudo docker run --rm --runtime=runsc hello-world
+```
+
+The `hello-world` command must succeed. If `runsc` is missing, the sandbox canary fails and sockfilter never starts.
+
+First-time Docker CE + gVisor install: see [README.md](README.md#windows-native-wsl-2--docker-ce--gvisor).
+
+## First start
+
+From the repo root:
+
+```bash
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Put a **different** 32-byte hex value in each of:
+
+| Variable | Notes |
+| --- | --- |
+| `SEARXNG_SECRET` | required |
+| `QDRANT_API_KEY` | required |
+| `CLICK_BROKER_TOKEN` | required; at least 32 characters |
+| `VALKEY_PASSWORD` | hex or url-safe only; no `@`, `:`, or `/` |
+| `YACY_ADMIN_PASSWORD` | required; longer than 2 characters |
+| `YACY_ADMIN_USER` | typically `admin` |
+| `YACY_RESOURCE` | leave as `local` |
+| `ALLOW_INSECURE_HTTP` | leave as `0` unless you intentionally allow HTTP click targets |
+
+Then set the Docker socket group and start:
+
+```bash
+stat -c %g /var/run/docker.sock    # paste the number into DOCKER_GID in .env
+sudo sh gateway/install-egress-firewall.sh
+./build-sandbox.sh                 # writes SANDBOX_IMAGE_TAG into .env
+docker compose up --build
+docker compose logs -f web
+```
+
+## Unlock
+
+1. Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish port `3000` on `0.0.0.0`.
+2. Copy the one-time startup token from the `web` container logs.
+3. Paste it once on the unlock page.
+
+The token is consumed on unlock and cannot be reused from those logs. Restarting `web` mints a new token. Locking the UI without a `web` restart leaves you locked out until the container restarts.
+
+## Later starts
+
+If `.env` is already filled:
+
+```bash
+sudo sh gateway/install-egress-firewall.sh
+docker compose up --build
+docker compose logs -f web
+```
+
+Reinstall the nftables rule after every Docker daemon or host-firewall restart. The gateway will refuse to start if it still has direct internet egress.
+
+Rerun `./build-sandbox.sh` after any change under `browser-sandbox/`, then `docker compose up --build` again.
+
+## Stop
+
+```bash
+docker compose down
+```
+
+## If it does not start
+
+- **Gateway exits immediately** — nftables is missing or was wiped. Run `sudo sh gateway/install-egress-firewall.sh` again.
+- **sockfilter never becomes healthy** — `runsc` is missing, or the sandbox canary failed. Check `docker compose logs browser-sandbox`.
+- **Compose interpolation error for `SANDBOX_IMAGE_TAG`** — run `./build-sandbox.sh` first.
+- **Compose interpolation error for `DOCKER_GID`** — set it to `stat -c %g /var/run/docker.sock`.
+- **Unlock token rejected** — it was already consumed, or `web` was restarted and a new token was printed. Use the latest `web` log banner.

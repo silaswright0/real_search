@@ -108,6 +108,8 @@ Official references:
 
 ## Run
 
+Step-by-step start, unlock, and troubleshooting: [setup.md](setup.md).
+
 ```bash
 cp .env.example .env
 # Generate independent values for SEARXNG_SECRET, QDRANT_API_KEY,
