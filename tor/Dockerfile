@@ -6,9 +6,11 @@ RUN apk add --no-cache tor python3 busybox-extras su-exec \
 
 COPY torrc /etc/tor/torrc
 COPY socks-gate.py /usr/local/bin/socks-gate.py
+COPY healthcheck.py /usr/local/bin/tor-healthcheck.py
 COPY entrypoint.sh /usr/local/bin/real-search-tor-entrypoint.sh
 
 RUN chmod 0555 /usr/local/bin/socks-gate.py \
+    /usr/local/bin/tor-healthcheck.py \
     /usr/local/bin/real-search-tor-entrypoint.sh \
   && chown tor:tor /etc/tor/torrc
 

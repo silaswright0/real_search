@@ -45,4 +45,21 @@ fi
 su-exec tor python3 /usr/local/bin/socks-gate.py &
 GATE_PID=$!
 
+k=0
+while [ "$k" -lt 50 ]; do
+  if python3 /usr/local/bin/tor-healthcheck.py; then
+    break
+  fi
+  if ! kill -0 "$GATE_PID" 2>/dev/null; then
+    echo "socks-gate exited before both SOCKS ports opened" >&2
+    exit 1
+  fi
+  k=$((k + 1))
+  sleep 1
+done
+if ! python3 /usr/local/bin/tor-healthcheck.py; then
+  echo "socks-gate did not listen on 172.28.0.2:9050 and 172.30.0.2:9050" >&2
+  exit 1
+fi
+
 wait "$GATE_PID"

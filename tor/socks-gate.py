@@ -7,7 +7,9 @@ import ipaddress
 import os
 import secrets
 import socket
+import sys
 import threading
+import time
 
 TOR_HOST = os.environ.get("TOR_SOCKS_HOST", "127.0.0.1")
 TOR_PORT = int(os.environ.get("TOR_SOCKS_PORT", "9051"))
@@ -134,10 +136,28 @@ def _handle(conn: socket.socket, mint_isolation: bool, allow: ipaddress.IPv4Netw
 
 
 def _serve(bind_ip: str, mint_isolation: bool, allow: ipaddress.IPv4Network) -> None:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((bind_ip, LISTEN_PORT))
-        server.listen(128)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    last_err: OSError | None = None
+    for _ in range(50):
+        try:
+            server.bind((bind_ip, LISTEN_PORT))
+            last_err = None
+            break
+        except OSError as exc:
+            last_err = exc
+            time.sleep(0.2)
+    if last_err is not None:
+        print(
+            f"socks-gate could not bind {bind_ip}:{LISTEN_PORT}: {last_err}",
+            file=sys.stderr,
+            flush=True,
+        )
+        server.close()
+        raise last_err
+    server.listen(128)
+    print(f"socks-gate listening on {bind_ip}:{LISTEN_PORT}", flush=True)
+    try:
         while True:
             conn, _addr = server.accept()
             threading.Thread(
@@ -145,16 +165,26 @@ def _serve(bind_ip: str, mint_isolation: bool, allow: ipaddress.IPv4Network) -> 
                 args=(conn, mint_isolation, allow),
                 daemon=True,
             ).start()
+    finally:
+        server.close()
+
+
+def _serve_or_exit(bind_ip: str, mint_isolation: bool, allow: ipaddress.IPv4Network) -> None:
+    try:
+        _serve(bind_ip, mint_isolation, allow)
+    except Exception as exc:
+        print(f"socks-gate failed on {bind_ip}:{LISTEN_PORT}: {exc}", file=sys.stderr, flush=True)
+        os._exit(1)
 
 
 def main() -> None:
     search = threading.Thread(
-        target=_serve,
+        target=_serve_or_exit,
         args=(SEARCH_BIND, True, SEARCH_ALLOW),
         daemon=True,
     )
     sandbox = threading.Thread(
-        target=_serve,
+        target=_serve_or_exit,
         args=(SANDBOX_BIND, False, SANDBOX_ALLOW),
         daemon=True,
     )

@@ -3,4 +3,5 @@
 !Dockerfile
 !torrc
 !socks-gate.py
+!healthcheck.py
 !entrypoint.sh
