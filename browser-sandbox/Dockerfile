@@ -7,15 +7,12 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     firefox-esr \
-    iptables \
     novnc \
     procps \
     socat \
     websockify \
     x11vnc \
     xvfb \
-  && update-alternatives --set iptables /usr/sbin/iptables-legacy \
-  && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /etc/firefox/policies /etc/firefox-esr/policies \
     /usr/lib/firefox-esr/distribution /usr/lib/firefox-esr/defaults/pref \

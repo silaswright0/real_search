@@ -344,7 +344,7 @@ async def create_session(request: web.Request) -> web.Response:
         "labels": {"real-search.sandbox": "true"},
         "network": SANDBOX_VNC_NETWORK,
         "cap_drop": ["ALL"],
-        "cap_add": ["NET_ADMIN", "SETGID", "SETUID"],
+        "cap_add": ["SETGID", "SETUID"],
         "security_opt": ["no-new-privileges:true"],
         "tmpfs": {
             "/tmp": "rw,noexec,nosuid,nodev,size=64m",

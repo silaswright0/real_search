@@ -37,6 +37,8 @@ networks:
     name: real-search_sandbox-egress
     internal: true
     enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-rs-sandbox
     ipam:
       config:
         - subnet: 172.30.0.0/24
@@ -44,6 +46,8 @@ networks:
     name: real-search_sandbox-vnc
     internal: true
     enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-rs-vnc
     ipam:
       config:
         - subnet: 172.32.0.0/24
@@ -257,9 +261,6 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      # Granted only so entrypoint.sh can install iptables, then dropped
-      # with setpriv before Firefox, socat, or VNC start.
-      - NET_ADMIN
       - SETGID
       - SETUID
     security_opt:

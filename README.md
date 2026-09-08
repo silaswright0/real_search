@@ -160,7 +160,7 @@ Titles do not open the host browser. They start the content-pinned
 1. HTTPS-only URL allowlist (no loopback/private/decimal IPs or userinfo); HTTP requires `ALLOW_INSECURE_HTTP=1`
 2. Join **only** `real-search_sandbox` (`internal: true` — no default gateway to the internet)
 3. The broker resolves Tor on the ordinary Docker network before creation and gives runsc literal `TOR_IP` and `BROKER_IP` values; the guest never depends on Docker's `127.0.0.11` DNS
-4. Firefox SOCKS to `127.0.0.1:9050` (socat to the literal Tor address) with remote DNS; stateless guest firewall rules permit only Tor SOCKS traffic, loopback, and websockify replies to the broker
+4. Firefox SOCKS to `127.0.0.1:9050` (socat to the literal Tor address) with remote DNS. gVisor has no iptables `filter` table without `--net-raw`; host nftables on `br-rs-sandbox` / `br-rs-vnc` allow only Tor SOCKS and websockify replies to the broker. The guest is never given `NET_ADMIN` or raw sockets.
 5. `/tmp` and `/home/sandbox` are ephemeral `noexec,nosuid,nodev` tmpfs mounts
 6. Firefox blocks file-selection dialogs; automatic downloads and disabled-PDF-viewer payloads can only land in bounded RAM-backed tmpfs and disappear with the session
 7. x11vnc enforces `-nosel` at the display boundary, so clipboard isolation does not depend on a noVNC client setting

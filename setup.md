@@ -81,7 +81,7 @@ sudo docker compose up --build
 sudo docker compose logs -f web
 ```
 
-Reinstall the nftables rule after every Docker daemon or host-firewall restart. The gateway will refuse to start if it still has direct internet egress.
+Reinstall the nftables rule after every Docker daemon or host-firewall restart. The gateway will refuse to start if it still has direct internet egress. After sandbox bridge-name changes, `sudo docker compose down` once so Docker can recreate `br-rs-sandbox` and `br-rs-vnc`.
 
 Rerun `sudo ./build-sandbox.sh` after any change under `browser-sandbox/`, then `sudo docker compose up --build` again. If the build ran as root, `sudo chown "$USER:$USER" .env`.
 

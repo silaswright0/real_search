@@ -247,8 +247,8 @@ def _validate_create(body: dict[str, Any]) -> str | None:
     if "ALL" not in cap_drop:
         return "all capabilities must be dropped"
     caps = {str(c).removeprefix("CAP_") for c in _as_list(host.get("CapAdd"))}
-    if caps != {"NET_ADMIN", "SETGID", "SETUID"}:
-        return "only NET_ADMIN, SETGID and SETUID may be added"
+    if caps != {"SETGID", "SETUID"}:
+        return "only SETGID and SETUID may be added"
     runtime = host.get("Runtime") or ""
     if runtime != ALLOWED_RUNTIME:
         return f"runtime must be {ALLOWED_RUNTIME}"
@@ -305,7 +305,7 @@ def _clean_create(body: dict[str, Any]) -> bytes:
             "NanoCpus": 1_000_000_000,
             "NetworkMode": ALLOWED_VNC_NETWORK,
             "ReadonlyRootfs": True,
-            "CapAdd": ["NET_ADMIN", "SETGID", "SETUID"],
+            "CapAdd": ["SETGID", "SETUID"],
             "CapDrop": ["ALL"],
             "SecurityOpt": ["no-new-privileges:true"],
             "Tmpfs": ALLOWED_TMPFS,

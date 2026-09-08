@@ -39,44 +39,11 @@ net_admin_effective() {
   [ "$((eff & 4096))" -ne 0 ]
 }
 
-if [ "${SANDBOX_NET_ADMIN_DROPPED:-0}" != "1" ]; then
-  if ! net_admin_effective; then
-    echo "NET_ADMIN is required to install the Tor-only firewall" >&2
-    exit 1
-  fi
-  # Rootfs is read-only; iptables-legacy otherwise dies on /run/xtables.lock.
-  export XTABLES_LOCKFILE=/tmp/xtables.lock
-  if ! iptables -P OUTPUT DROP || ! iptables -F OUTPUT; then
-    echo "could not enforce IPv4 Tor-only firewall" >&2
-    iptables -V >&2 || true
-    exit 1
-  fi
-  iptables -A OUTPUT -o lo -j ACCEPT
-  iptables -A OUTPUT -p tcp -d "$TOR_IP" --dport "$TOR_PORT" -j ACCEPT
-  # Statelessly permit only replies from websockify to the broker. gVisor does
-  # not implement the Linux conntrack matcher.
-  iptables -A OUTPUT -p tcp -s 0.0.0.0/0 --sport 6080 -d "$BROKER_IP" -j ACCEPT
-
-  if ip6tables -P OUTPUT DROP 2>/dev/null && ip6tables -F OUTPUT 2>/dev/null; then
-    ip6tables -A OUTPUT -o lo -j ACCEPT
-  elif [ -s /proc/net/if_inet6 ] \
-    && awk '$2 != "01" { found=1 } END { exit found ? 0 : 1 }' /proc/net/if_inet6; then
-    echo "could not enforce IPv6 deny policy on an IPv6-enabled interface" >&2
-    exit 1
-  fi
-
-  # Docker still grants NET_ADMIN at start so iptables can run. Drop it before
-  # Firefox or VNC start so a compromised guest cannot rewrite the filter.
-  export SANDBOX_NET_ADMIN_DROPPED=1
-  exec setpriv \
-    --bounding-set=-net_admin \
-    --inh-caps=-net_admin \
-    --ambient-caps=-net_admin \
-    -- /entrypoint.sh
-fi
-
+# gVisor has no iptables filter table unless runsc --net-raw is enabled.
+# Do not enable raw sockets. Tor-only OUTPUT is host nftables on the
+# sandbox bridges (gateway/install-egress-firewall.sh).
 if net_admin_effective; then
-  echo "NET_ADMIN remained effective after capability drop" >&2
+  echo "NET_ADMIN must not be granted; host nftables enforces Tor-only egress" >&2
   exit 1
 fi
 

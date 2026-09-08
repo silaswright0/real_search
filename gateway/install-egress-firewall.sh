@@ -3,7 +3,13 @@ set -eu
 
 INGRESS_BRIDGE="${INGRESS_BRIDGE:-br-rs-ingress}"
 TOR_BRIDGE="${TOR_BRIDGE:-br-rs-tor}"
+SANDBOX_BRIDGE="${SANDBOX_BRIDGE:-br-rs-sandbox}"
+VNC_BRIDGE="${VNC_BRIDGE:-br-rs-vnc}"
 TOR_CONTAINER_IP="${TOR_CONTAINER_IP:-172.27.0.2}"
+TOR_SOCKS_IP="${TOR_SOCKS_IP:-172.30.0.2}"
+SANDBOX_EGRESS_NET="${SANDBOX_EGRESS_NET:-172.30.0.0/24}"
+BROKER_VNC_IP="${BROKER_VNC_IP:-172.32.0.2}"
+SANDBOX_VNC_NET="${SANDBOX_VNC_NET:-172.32.0.0/24}"
 TABLE="real_search_gateway"
 
 if ! command -v nft >/dev/null 2>&1; then
@@ -43,9 +49,24 @@ table inet $TABLE {
     } counter drop
     iifname "$TOR_BRIDGE" meta l4proto tcp accept
     iifname "$TOR_BRIDGE" counter drop
+
+    # gVisor guests cannot load xtables. Same OUTPUT policy on the host:
+    # sandbox-egress may only reach Tor SOCKS; sandbox-vnc may only exchange
+    # websockify (6080) with the broker.
+    iifname "$SANDBOX_BRIDGE" meta nfproto ipv6 counter drop
+    ip saddr $SANDBOX_EGRESS_NET ip daddr $TOR_SOCKS_IP tcp dport 9050 accept
+    ip saddr $TOR_SOCKS_IP tcp sport 9050 ip daddr $SANDBOX_EGRESS_NET accept
+    ip saddr $SANDBOX_EGRESS_NET counter drop
+    iifname "$SANDBOX_BRIDGE" counter drop
+
+    iifname "$VNC_BRIDGE" meta nfproto ipv6 counter drop
+    ip saddr $BROKER_VNC_IP ip daddr $SANDBOX_VNC_NET tcp dport 6080 accept
+    ip saddr $SANDBOX_VNC_NET ip daddr $BROKER_VNC_IP tcp sport 6080 accept
+    ip saddr $SANDBOX_VNC_NET counter drop
+    iifname "$VNC_BRIDGE" counter drop
   }
 }
 EOF
 
 nft list table inet "$TABLE" >/dev/null
-echo "enforced gateway deny and Tor-only public TCP egress with nftables"
+echo "enforced gateway deny, Tor-only public TCP, and sandbox host firewall"
