@@ -61,6 +61,9 @@ runuser -u sandbox -- sh -c '
 ' sh "$TOR_SOCKS_USERNAME" "$TOR_SOCKS_PASSWORD"
 runuser -u vnc -- sh -c 'umask 077; printf "%s: 127.0.0.1:5900\n" "$1" > /tmp/websockify.tokens' sh "$VNC_TOKEN"
 runuser -u vnc -- x11vnc -storepasswd "$VNC_PASSWORD" /tmp/vnc.pass >/dev/null
+# Xorg will not create this unless euid is 0.
+mkdir -p /tmp/.X11-unix
+chmod 1777 /tmp/.X11-unix
 runuser -u vnc -- Xvfb "$DISPLAY_NUM" -screen 0 1280x800x24 -nolisten tcp -ac &
 XVFB_PID=$!
 sleep 0.6
