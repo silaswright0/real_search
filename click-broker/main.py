@@ -80,7 +80,17 @@ if MAX_SESSION_LIFETIME_SEC < 60 or MAX_SESSION_LIFETIME_SEC > 3600:
 ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 LOGGER = logging.getLogger("click-broker")
-docker_client = docker.from_env()
+
+
+def _docker_client() -> docker.DockerClient:
+    host = os.environ.get("DOCKER_HOST", "").strip()
+    if not host:
+        raise RuntimeError("DOCKER_HOST is required")
+    # from_env() treats DOCKER_TLS_VERIFY=0 as TLS-on (any non-empty value).
+    return docker.DockerClient(base_url=host, tls=False)
+
+
+docker_client = _docker_client()
 sessions: dict[str, dict[str, Any]] = {}
 pending_sessions: dict[str, float] = {}
 tombstones: dict[str, dict[str, Any]] = {}

@@ -35,7 +35,7 @@ valkey:
 outgoing:
   request_timeout: 15.0
   max_request_timeout: 30.0
-  extra_proxy_timeout: 10.0
+  extra_proxy_timeout: 10
   using_tor_proxy: true
   # New SOCKS connections only: the Tor auth gate mints unique
   # IsolateSOCKSAuth credentials per connection, which is the per-query circuit.
