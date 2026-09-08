@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probe Tor SOCKS and both public gate binds. BusyBox nc -z hangs on SOCKS."""
+"""Probe Tor SOCKS and the loopback gate bind. BusyBox nc -z hangs on SOCKS."""
 
 from __future__ import annotations
 

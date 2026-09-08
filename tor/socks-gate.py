@@ -13,9 +13,21 @@ import threading
 TOR_HOST = os.environ.get("TOR_SOCKS_HOST", "127.0.0.1")
 TOR_PORT = int(os.environ.get("TOR_SOCKS_PORT", "9051"))
 LISTEN_PORT = int(os.environ.get("SOCKS_GATE_PORT", "9050"))
-SEARCH_ALLOW = ipaddress.ip_network(os.environ.get("SEARCH_SOCKS_ALLOW", "172.28.0.3/32"))
-SANDBOX_ALLOW = ipaddress.ip_network(os.environ.get("SANDBOX_SOCKS_ALLOW", "172.30.0.0/24"))
 HANDSHAKE_TIMEOUT = 10.0
+
+
+def _networks(value: str) -> tuple[ipaddress.IPv4Network, ...]:
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not parts:
+        raise ValueError("SOCKS allowlist is empty")
+    return tuple(ipaddress.ip_network(part) for part in parts)
+
+
+SEARCH_ALLOW = _networks(os.environ.get("SEARCH_SOCKS_ALLOW", "172.28.0.3/32"))
+# Dual-homed sandboxes (egress + VNC) may source from either NIC under gVisor.
+SANDBOX_ALLOW = _networks(
+    os.environ.get("SANDBOX_SOCKS_ALLOW", "172.30.0.0/24,172.32.0.0/24")
+)
 
 
 def _recv_exact(conn: socket.socket, size: int) -> bytes:
@@ -100,19 +112,26 @@ def _splice(left: socket.socket, right: socket.socket) -> None:
         thread.join()
 
 
-def _allowed(peer: str, network: ipaddress.IPv4Network) -> bool:
+def _allowed(peer: str, networks: tuple[ipaddress.IPv4Network, ...]) -> bool:
     try:
-        return ipaddress.ip_address(peer) in network
+        addr = ipaddress.ip_address(peer)
     except ValueError:
         return False
+    return any(addr in network for network in networks)
 
 
-def _handle(conn: socket.socket, mint_isolation: bool, allow: ipaddress.IPv4Network) -> None:
+def _handle(
+    conn: socket.socket,
+    mint_isolation: bool,
+    allow: tuple[ipaddress.IPv4Network, ...],
+) -> None:
     tor: socket.socket | None = None
+    peer = "unknown"
     try:
         conn.settimeout(HANDSHAKE_TIMEOUT)
         peer = conn.getpeername()[0]
         if not _allowed(peer, allow):
+            print(f"socks-gate reject peer={peer}", flush=True)
             return
         username, password = _client_auth(conn)
         if mint_isolation:
@@ -124,7 +143,8 @@ def _handle(conn: socket.socket, mint_isolation: bool, allow: ipaddress.IPv4Netw
         conn.settimeout(None)
         tor.settimeout(None)
         _splice(conn, tor)
-    except Exception:
+    except Exception as exc:
+        print(f"socks-gate handshake error peer={peer}: {exc}", flush=True)
         return
     finally:
         conn.close()
@@ -144,6 +164,7 @@ def _dispatch(conn: socket.socket) -> None:
     if _allowed(peer, SANDBOX_ALLOW):
         _handle(conn, False, SANDBOX_ALLOW)
         return
+    print(f"socks-gate reject peer={peer}", flush=True)
     conn.close()
 
 

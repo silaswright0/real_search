@@ -46,6 +46,7 @@ if [ "${SANDBOX_NET_ADMIN_DROPPED:-0}" != "1" ]; then
   fi
   if ! iptables -P OUTPUT DROP || ! iptables -F OUTPUT; then
     echo "could not enforce IPv4 Tor-only firewall" >&2
+    iptables -V >&2 || true
     exit 1
   fi
   iptables -A OUTPUT -o lo -j ACCEPT
@@ -112,15 +113,30 @@ trap cleanup EXIT INT TERM
 
 if [ "$SANDBOX_CANARY" = "1" ]; then
   sleep 0.5
-  kill -0 "$SOCAT_PID" "$XVFB_PID" "$VNC_PID" "$WS_PID"
+  if ! kill -0 "$SOCAT_PID" "$XVFB_PID" "$VNC_PID" "$WS_PID"; then
+    echo "canary helper process died" >&2
+    cat /tmp/x11vnc.log /tmp/websockify.log 2>/dev/null || true
+    exit 1
+  fi
   if net_admin_effective; then
     echo "canary still has NET_ADMIN" >&2
     exit 1
   fi
-  if ! printf 'GET /vnc.html HTTP/1.0\r\n\r\n' \
-    | socat -T 3 - TCP:127.0.0.1:6080 \
-    | grep -q '200 OK'; then
+  novnc_ok=0
+  n=0
+  while [ "$n" -lt 10 ]; do
+    if printf 'GET /vnc.html HTTP/1.0\r\n\r\n' \
+      | socat -T 3 - TCP:127.0.0.1:6080 \
+      | grep -q '200 OK'; then
+      novnc_ok=1
+      break
+    fi
+    n=$((n + 1))
+    sleep 0.3
+  done
+  if [ "$novnc_ok" != 1 ]; then
     echo "noVNC canary failed" >&2
+    cat /tmp/websockify.log 2>/dev/null || true
     exit 1
   fi
   USER_LENGTH="$(printf '%03o' "${#TOR_SOCKS_USERNAME}")"
@@ -135,10 +151,13 @@ if [ "$SANDBOX_CANARY" = "1" ]; then
       | od -An -tx1 \
       | tr -d ' \n'
   )"
-  if [ "$SOCKS_REPLY" != "05020100" ]; then
-    echo "authenticated Tor SOCKS canary failed" >&2
-    exit 1
-  fi
+  case "$SOCKS_REPLY" in
+    05020100*) ;;
+    *)
+      echo "authenticated Tor SOCKS canary failed (reply=${SOCKS_REPLY:-empty})" >&2
+      exit 1
+      ;;
+  esac
   echo "runsc sandbox canary passed"
   exit 0
 fi
