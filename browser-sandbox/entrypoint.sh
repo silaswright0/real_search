@@ -56,9 +56,9 @@ runuser -u sandbox -- install -d -m 700 /home/sandbox/profile
 runuser -u sandbox -- install -d -m 700 /home/sandbox/Downloads
 runuser -u sandbox -- install -m 600 /opt/firefox-profile/user.js /home/sandbox/profile/user.js
 runuser -u sandbox -- sh -c '
-  printf "user_pref(\"network.proxy.socks_username\", \"%s\");\n" "$1"
-  printf "user_pref(\"network.proxy.socks_password\", \"%s\");\n" "$2"
-' sh "$TOR_SOCKS_USERNAME" "$TOR_SOCKS_PASSWORD" >> /home/sandbox/profile/user.js
+  printf "user_pref(\"network.proxy.socks_username\", \"%s\");\n" "$1" >> /home/sandbox/profile/user.js
+  printf "user_pref(\"network.proxy.socks_password\", \"%s\");\n" "$2" >> /home/sandbox/profile/user.js
+' sh "$TOR_SOCKS_USERNAME" "$TOR_SOCKS_PASSWORD"
 runuser -u vnc -- sh -c 'umask 077; printf "%s: 127.0.0.1:5900\n" "$1" > /tmp/websockify.tokens' sh "$VNC_TOKEN"
 runuser -u vnc -- x11vnc -storepasswd "$VNC_PASSWORD" /tmp/vnc.pass >/dev/null
 runuser -u vnc -- Xvfb "$DISPLAY_NUM" -screen 0 1280x800x24 -nolisten tcp -ac &
