@@ -3,30 +3,13 @@
 
 from __future__ import annotations
 
-import fcntl
 import ipaddress
 import os
 import secrets
 import socket
-import struct
 import sys
 import threading
 import time
-
-SIOCGIFADDR = 0x8915
-
-
-def _local_ipv4() -> list[str]:
-    found: list[str] = []
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        for name in os.listdir("/sys/class/net"):
-            try:
-                ifreq = struct.pack("256s", name.encode("ascii", "replace")[:15])
-                res = fcntl.ioctl(sock.fileno(), SIOCGIFADDR, ifreq)
-            except OSError:
-                continue
-            found.append(socket.inet_ntoa(res[20:24]))
-    return found
 
 
 TOR_HOST = os.environ.get("TOR_SOCKS_HOST", "127.0.0.1")
@@ -166,16 +149,14 @@ def _serve(bind_ip: str, mint_isolation: bool, allow: ipaddress.IPv4Network) -> 
             last_err = exc
             if attempt == 0 or attempt % 10 == 9:
                 print(
-                    f"socks-gate bind {bind_ip}:{LISTEN_PORT}: {exc}; "
-                    f"have {_local_ipv4()}",
+                    f"socks-gate bind {bind_ip}:{LISTEN_PORT}: {exc}",
                     file=sys.stderr,
                     flush=True,
                 )
             time.sleep(0.5)
     if last_err is not None:
         print(
-            f"socks-gate could not bind {bind_ip}:{LISTEN_PORT}: {last_err}; "
-            f"have {_local_ipv4()}",
+            f"socks-gate could not bind {bind_ip}:{LISTEN_PORT}: {last_err}",
             file=sys.stderr,
             flush=True,
         )
@@ -204,10 +185,7 @@ def _serve_or_exit(bind_ip: str, mint_isolation: bool, allow: ipaddress.IPv4Netw
 
 
 def main() -> None:
-    print(
-        f"socks-gate starting uid={os.getuid()} addrs={_local_ipv4()}",
-        flush=True,
-    )
+    print(f"socks-gate starting uid={os.getuid()}", flush=True)
     search = threading.Thread(
         target=_serve_or_exit,
         args=(SEARCH_BIND, True, SEARCH_ALLOW),

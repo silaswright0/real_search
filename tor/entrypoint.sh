@@ -44,7 +44,7 @@ if ! python3 /usr/local/bin/tor-healthcheck.py --tor >/dev/null 2>&1; then
   exit 1
 fi
 
-su-exec tor python3 /usr/local/bin/socks-gate.py &
+su-exec tor python3 -u /usr/local/bin/socks-gate.py &
 GATE_PID=$!
 
 k=0
