@@ -24,7 +24,7 @@ trap cleanup EXIT INT TERM
 
 i=0
 while [ "$i" -lt 60 ]; do
-  if nc -z 127.0.0.1 9051; then
+  if python3 /usr/local/bin/tor-healthcheck.py --tor; then
     break
   fi
   if ! kill -0 "$TOR_PID" 2>/dev/null; then
@@ -37,7 +37,7 @@ while [ "$i" -lt 60 ]; do
   sleep 1
 done
 
-if ! nc -z 127.0.0.1 9051; then
+if ! python3 /usr/local/bin/tor-healthcheck.py --tor; then
   echo "tor SOCKS listener did not become ready" >&2
   exit 1
 fi
@@ -47,7 +47,7 @@ GATE_PID=$!
 
 k=0
 while [ "$k" -lt 50 ]; do
-  if python3 /usr/local/bin/tor-healthcheck.py; then
+  if python3 /usr/local/bin/tor-healthcheck.py --gate; then
     break
   fi
   if ! kill -0 "$GATE_PID" 2>/dev/null; then
@@ -57,7 +57,7 @@ while [ "$k" -lt 50 ]; do
   k=$((k + 1))
   sleep 1
 done
-if ! python3 /usr/local/bin/tor-healthcheck.py; then
+if ! python3 /usr/local/bin/tor-healthcheck.py --gate; then
   echo "socks-gate did not listen on 172.28.0.2:9050 and 172.30.0.2:9050" >&2
   exit 1
 fi
