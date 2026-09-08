@@ -94,6 +94,7 @@ sudo docker compose down
 ## If it does not start
 
 - **Gateway exits immediately** — nftables is missing or was wiped. Run `sudo sh gateway/install-egress-firewall.sh` again.
+- **`tor exited before the loopback SOCKS port opened`** — Tor died during startup. `sudo docker compose logs tor` and read the `[warn]`/`[err]` lines above that message. Rebuild after pulling: `sudo docker compose up --build tor`.
 - **sockfilter never becomes healthy** — `runsc` is missing, or the sandbox canary failed. Check `sudo docker compose logs browser-sandbox`.
 - **`permission denied` on `docker.sock`** — prefix the command with `sudo`. `DOCKER_GID` does not grant your user Docker access.
 - **`unknown or invalid runtime name: runsc`** — the binary is missing or Docker was not restarted after `sudo runsc install`.

@@ -1,13 +1,19 @@
 #!/bin/sh
 set -eu
 
-mkdir -p /var/lib/tor
+mkdir -p /var/lib/tor /run/tor
 # chmod while still root-owned. CAP_FOWNER is dropped, so chmod after
 # chown to tor:tor fails with "Operation not permitted".
-chmod 0700 /var/lib/tor
-chown -R tor:tor /var/lib/tor
+chmod 0700 /var/lib/tor /run/tor
+chown -R tor:tor /var/lib/tor /run/tor
 
-su-exec tor tor -f /etc/tor/torrc &
+if ! su-exec tor tor --verify-config -f /etc/tor/torrc; then
+  echo "tor configuration is invalid" >&2
+  exit 1
+fi
+
+# CLI flags beat compiled defaults (including an accidental daemonize).
+su-exec tor tor -f /etc/tor/torrc --RunAsDaemon 0 --PidFile /var/lib/tor/tor.pid &
 TOR_PID=$!
 GATE_PID=""
 
@@ -22,7 +28,9 @@ while [ "$i" -lt 60 ]; do
     break
   fi
   if ! kill -0 "$TOR_PID" 2>/dev/null; then
-    echo "tor exited before the loopback SOCKS port opened" >&2
+    wait "$TOR_PID" || status=$?
+    echo "tor exited before the loopback SOCKS port opened (status ${status:-0})" >&2
+    echo "scroll up for Tor's own [warn]/[err] lines" >&2
     exit 1
   fi
   i=$((i + 1))

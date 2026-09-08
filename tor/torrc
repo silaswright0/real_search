@@ -5,5 +5,11 @@ SocksPort 127.0.0.1:9051 IsolateSOCKSAuth KeepAliveIsolateSOCKSAuth
 SocksPolicy accept 127.0.0.1
 SocksPolicy reject *
 DataDirectory /var/lib/tor
+PidFile /var/lib/tor/tor.pid
 Log notice stdout
 RunAsDaemon 0
+ClientOnly 1
+# Docker already applies seccomp. Tor's extra sandbox aborts under
+# cap_drop/WSL with no SOCKS listener.
+Sandbox 0
+ClientUseIPv6 0
