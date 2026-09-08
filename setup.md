@@ -10,12 +10,25 @@ Confirm these before the first start:
 
 ```bash
 sudo docker info          # WSL-native daemon, not Docker Desktop
+runsc --version           # official gVisor, not Ubuntu's runsc package
 sudo docker run --rm --runtime=runsc hello-world
 ```
 
-The `hello-world` command must succeed. If `runsc` is missing, the sandbox canary fails and sockfilter never starts.
+The `hello-world` command must succeed. If `runsc` is missing or too old, the sandbox canary fails and sockfilter never starts.
 
 First-time Docker CE + gVisor install: see [README.md](README.md#windows-native-wsl-2--docker-ce--gvisor).
+
+### Version requirements
+
+| Component | Requirement |
+| --- | --- |
+| Host | WSL 2 with systemd, or native Linux. Docker Desktop is unsupported. |
+| Docker | Docker Engine CE from Docker's apt repo (Compose plugin included). |
+| `runsc` | Official gVisor **`release-20240801` or later**. Ubuntu's `runsc` package (version like `0.0~20240729.0`) is too old. |
+| Kernel | Linux 5.6 or later (WSL 2's Microsoft kernel is fine if `runsc` is new enough). |
+| RAM | About 5GB+ with a sandbox open. |
+
+`runsc --version` must look like `release-YYYYMMDD.N`. On kernels where `/proc/sys/net/core/rmem_default` exists in every netns (including recent WSL 2), older `runsc` fails with `cannot run with network enabled in root network namespace` even though Docker created a real netns. Install from [gVisor's apt repo](https://gvisor.dev/docs/user_guide/install/), not `apt install runsc` from Ubuntu.
 
 ## First start
 
@@ -83,6 +96,8 @@ sudo docker compose down
 - **Gateway exits immediately** — nftables is missing or was wiped. Run `sudo sh gateway/install-egress-firewall.sh` again.
 - **sockfilter never becomes healthy** — `runsc` is missing, or the sandbox canary failed. Check `sudo docker compose logs browser-sandbox`.
 - **`permission denied` on `docker.sock`** — prefix the command with `sudo`. `DOCKER_GID` does not grant your user Docker access.
+- **`unknown or invalid runtime name: runsc`** — the binary is missing or Docker was not restarted after `sudo runsc install`.
+- **`cannot run with network enabled in root network namespace`** — `runsc` is too old (Ubuntu's `0.0~*` package). Install official gVisor `release-20240801` or later and run `sudo runsc install` again.
 - **Compose interpolation error for `SANDBOX_IMAGE_TAG`** — run `sudo ./build-sandbox.sh` first.
 - **Compose interpolation error for `DOCKER_GID`** — set it to `stat -c %g /var/run/docker.sock`.
 - **Unlock token rejected** — it was already consumed, or `web` was restarted and a new token was printed. Use the latest `web` log banner.

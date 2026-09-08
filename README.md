@@ -76,22 +76,31 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io \
 sudo systemctl enable --now docker
 ```
 
-Install gVisor from its official apt repository and register `runsc` with that
-native Docker daemon:
+Install gVisor from its **official** apt repository and register `runsc` with that
+native Docker daemon. Do not install Ubuntu's `runsc` package; that version
+(`0.0~20240729.0` and similar) is too old. This stack needs official
+`release-20240801` or later (`runsc --version` must look like `release-YYYYMMDD.N`).
 
 ```bash
+sudo rm -f /usr/share/keyrings/gvisor-archive-keyring.gpg
 curl -fsSL https://gvisor.dev/archive.key \
   | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" \
   | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
 sudo apt update
 sudo apt install -y runsc
+runsc --version
 sudo runsc install
 sudo systemctl restart docker
 sudo docker run --rm --runtime=runsc hello-world
 ```
 
-The final command must succeed. Confirm that the client is using the WSL-native
+If `apt update` reports `NO_PUBKEY` for the gVisor repo, re-run the `archive.key`
+commands above. If hello-world fails with `cannot run with network enabled in
+root network namespace`, `runsc` is still the Ubuntu package or otherwise older
+than `release-20240801`.
+
+The final hello-world command must succeed. Confirm that the client is using the WSL-native
 daemon with `sudo docker info`; do not point `DOCKER_HOST` at Docker Desktop.
 Keep the repository in the WSL filesystem (for example
 `~/src/real_search`), not under `/mnt/c`.
