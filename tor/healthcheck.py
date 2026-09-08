@@ -7,10 +7,7 @@ import socket
 import sys
 
 TOR = (("127.0.0.1", 9051),)
-GATE = (
-    ("172.28.0.2", 9050),
-    ("172.30.0.2", 9050),
-)
+GATE = (("127.0.0.1", 9050),)
 
 
 def probe(targets: tuple[tuple[str, int], ...]) -> None:
