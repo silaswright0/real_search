@@ -101,7 +101,7 @@ services:
       - SETGID
       - SETUID
     tmpfs:
-      - /var/lib/tor:rw,noexec,nosuid,nodev,mode=0777,size=64m
+      - /var/lib/tor:rw,noexec,nosuid,nodev,mode=0700,size=64m
     networks:
       tor-egress:
         ipv4_address: 172.27.0.2

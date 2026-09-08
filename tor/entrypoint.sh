@@ -2,8 +2,10 @@
 set -eu
 
 mkdir -p /var/lib/tor
-chown -R tor:tor /var/lib/tor
+# chmod while still root-owned. CAP_FOWNER is dropped, so chmod after
+# chown to tor:tor fails with "Operation not permitted".
 chmod 0700 /var/lib/tor
+chown -R tor:tor /var/lib/tor
 
 su-exec tor tor -f /etc/tor/torrc &
 TOR_PID=$!
