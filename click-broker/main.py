@@ -86,7 +86,9 @@ def _docker_client() -> docker.DockerClient:
     host = os.environ.get("DOCKER_HOST", "").strip()
     if not host:
         raise RuntimeError("DOCKER_HOST is required")
-    # from_env() treats DOCKER_TLS_VERIFY=0 as TLS-on (any non-empty value).
+    # from_env() and a leftover DOCKER_TLS_VERIFY=0 both enable TLS.
+    os.environ.pop("DOCKER_TLS_VERIFY", None)
+    os.environ.pop("DOCKER_CERT_PATH", None)
     return docker.DockerClient(base_url=host, tls=False)
 
 

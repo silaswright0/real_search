@@ -1,0 +1,5 @@
+# Bind-mounted into Linux containers. CRLF breaks nginx maps and YAML types.
+*.conf text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf

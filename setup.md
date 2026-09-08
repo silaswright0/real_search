@@ -65,7 +65,7 @@ sudo docker compose logs -f web
 
 ## Unlock
 
-1. Open [http://localhost:3000](http://localhost:3000). Do not publish port `3000` on `0.0.0.0`.
+1. Open [http://127.0.0.1:3000](http://127.0.0.1:3000) (IPv4 loopback; `localhost` may use IPv6). Do not publish port `3000` on `0.0.0.0`.
 2. Copy the one-time startup token from the `web` container logs.
 3. Paste it once on the unlock page.
 

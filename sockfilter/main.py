@@ -333,7 +333,11 @@ async def handle(request: web.Request) -> web.StreamResponse:
         allowed_keys = {"all", "filters", "limit", "size"}
         if set(request.rel_url.query) - allowed_keys:
             return web.json_response({"message": "container list query denied"}, status=403)
-        if filters != {"label": ["real-search.sandbox=true"]}:
+        if not isinstance(filters, dict) or set(filters) != {"label"}:
+            return web.json_response({"message": "sandbox label filter required"}, status=403)
+        label = filters.get("label")
+        labels = [label] if isinstance(label, str) else label
+        if labels != ["real-search.sandbox=true"]:
             return web.json_response({"message": "sandbox label filter required"}, status=403)
 
     raw = await request.read()
