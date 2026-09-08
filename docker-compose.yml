@@ -377,7 +377,7 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /etc/nginx/conf.d:rw,noexec,nosuid,nodev,size=1m
-      - /var/cache/nginx:rw,noexec,nosuid,nodev,uid=101,gid=101,mode=0700,size=16m
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=16m
       - /var/run:rw,noexec,nosuid,nodev,size=1m
       - /tmp:rw,noexec,nosuid,nodev,size=8m
     networks:

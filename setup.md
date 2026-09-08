@@ -93,7 +93,7 @@ sudo docker compose down
 
 ## If it does not start
 
-- **Gateway exits immediately** — nftables is missing or was wiped. Run `sudo sh gateway/install-egress-firewall.sh` again.
+- **Gateway exits immediately** — nftables is missing or was wiped. Run `sudo sh gateway/install-egress-firewall.sh` again. If logs show `mkdir() "/var/cache/nginx/client_temp" failed`, rebuild the gateway image (`sudo docker compose up --build -d gateway`).
 - **`tor exited before the loopback SOCKS port opened`** — Tor died during startup. `sudo docker compose logs tor` and read the `[warn]`/`[err]` lines above that message. Rebuild after pulling: `sudo docker compose up --build tor`.
 - **Compose stuck on `tor-1 Waiting` / localhost refused** — Tor can be bootstrapped while the SOCKS **gate** on `9050` is not healthy yet. Gateway does not start until Tor is healthy. Check `sudo docker inspect -f '{{.State.Health.Status}}' real-search-tor-1`.
 - **`browser-sandbox` exit 1 / sockfilter never starts** — the gVisor canary failed. Check `sudo docker compose logs browser-sandbox` and `sudo docker compose logs tor`. After pulling sandbox image changes, rerun `sudo ./build-sandbox.sh` before compose.
