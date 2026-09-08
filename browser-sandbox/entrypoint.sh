@@ -44,6 +44,8 @@ if [ "${SANDBOX_NET_ADMIN_DROPPED:-0}" != "1" ]; then
     echo "NET_ADMIN is required to install the Tor-only firewall" >&2
     exit 1
   fi
+  # Rootfs is read-only; iptables-legacy otherwise dies on /run/xtables.lock.
+  export XTABLES_LOCKFILE=/tmp/xtables.lock
   if ! iptables -P OUTPUT DROP || ! iptables -F OUTPUT; then
     echo "could not enforce IPv4 Tor-only firewall" >&2
     iptables -V >&2 || true
