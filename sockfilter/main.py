@@ -7,6 +7,7 @@ import json
 import os
 import re
 from typing import Any
+from urllib.parse import urlencode
 
 from aiohttp import ClientSession, UnixConnector, web
 
@@ -330,28 +331,19 @@ async def handle(request: web.Request) -> web.StreamResponse:
             filters = json.loads(request.rel_url.query.get("filters", "{}"))
         except json.JSONDecodeError:
             return web.json_response({"message": "invalid list filters"}, status=400)
-        allowed_keys = {
-            "all",
-            "before",
-            "filters",
-            "limit",
-            "since",
-            "size",
-            "trunc",
-            "trunc_cmd",
-        }
-        extra = sorted(set(request.rel_url.query) - allowed_keys)
-        if extra:
-            return web.json_response(
-                {"message": f"container list query denied: {','.join(extra)}"},
-                status=403,
-            )
         if not isinstance(filters, dict) or set(filters) != {"label"}:
             return web.json_response({"message": "sandbox label filter required"}, status=403)
         label = filters.get("label")
         labels = [label] if isinstance(label, str) else label
         if labels != ["real-search.sandbox=true"]:
             return web.json_response({"message": "sandbox label filter required"}, status=403)
+        # docker-py adds Engine-version noise (trunc_cmd, since, ...). Keep the
+        # label filter; only forward the list flags the engine needs.
+        forwarded = [
+            ("all", request.rel_url.query.get("all", "1")),
+            ("filters", json.dumps({"label": ["real-search.sandbox=true"]})),
+        ]
+        qs = f"?{urlencode(forwarded)}"
 
     raw = await request.read()
     if CREATE_RE.match(path) and request.method == "POST":

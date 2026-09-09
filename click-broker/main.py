@@ -520,6 +520,8 @@ async def _reconcile_sandboxes(force_retry: bool = False) -> bool:
                 sessions.pop(sid, None)
     await _retry_tombstones(force=force_retry)
     async with state_lock:
+        if tombstones:
+            LOGGER.error("sandbox tombstones remain after reconcile: %s", tombstones)
         return not tombstones
 
 
