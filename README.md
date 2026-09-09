@@ -131,10 +131,10 @@ sudo sh gateway/install-egress-firewall.sh
 sudo ./build-sandbox.sh
 sudo chown "$USER:$USER" .env
 sudo docker compose up --build
-sudo docker compose logs -f web
+sudo docker compose logs web 2>&1 | grep -A6 "real search startup token"
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Do not publish `3000` on `0.0.0.0`.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Do not publish `3000` on `0.0.0.0`.
 Only `localhost:3000` and `127.0.0.1:3000` Host headers are accepted. The web
 container prints a one-time startup token at boot; paste it once to unlock.
 The token is consumed on unlock and cannot be reused from those logs.

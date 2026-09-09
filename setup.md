@@ -60,14 +60,18 @@ sudo sh gateway/install-egress-firewall.sh
 sudo ./build-sandbox.sh            # writes SANDBOX_IMAGE_TAG into .env
 sudo chown "$USER:$USER" .env      # the build ran as root
 sudo docker compose up --build
-sudo docker compose logs -f web
 ```
 
 ## Unlock
 
 1. Open [http://127.0.0.1:3000](http://127.0.0.1:3000) (IPv4 loopback; `localhost` may use IPv6). Do not publish port `3000` on `0.0.0.0`.
-2. Copy the one-time startup token from the `web` container logs.
-3. Paste it once on the unlock page.
+2. Print the one-time startup token:
+
+```bash
+sudo docker compose logs web 2>&1 | grep -A6 "real search startup token"
+```
+
+3. Paste the token (the line under the banner) once on the unlock page.
 
 The token is consumed on unlock and cannot be reused from those logs. Restarting `web` mints a new token. Locking the UI without a `web` restart leaves you locked out until the container restarts.
 
@@ -78,7 +82,6 @@ If `.env` is already filled:
 ```bash
 sudo sh gateway/install-egress-firewall.sh
 sudo docker compose up --build
-sudo docker compose logs -f web
 ```
 
 Reinstall the nftables rule after every Docker daemon or host-firewall restart. The gateway will refuse to start if it still has direct internet egress. After sandbox bridge-name changes, `sudo docker compose down` once so Docker can recreate `br-rs-sandbox` and `br-rs-vnc`.
