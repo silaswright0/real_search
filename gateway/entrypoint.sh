@@ -27,12 +27,13 @@ mkdir -p \
   /var/cache/nginx/fastcgi_temp \
   /var/cache/nginx/uwsgi_temp \
   /var/cache/nginx/scgi_temp
-chown -R nginx:nginx /var/cache/nginx
+# chmod while still root-owned. After chown, cap_drop has no CAP_FOWNER.
 chmod 0700 /var/cache/nginx \
   /var/cache/nginx/client_temp \
   /var/cache/nginx/proxy_temp \
   /var/cache/nginx/fastcgi_temp \
   /var/cache/nginx/uwsgi_temp \
   /var/cache/nginx/scgi_temp
+chown -R nginx:nginx /var/cache/nginx
 
 exec /docker-entrypoint.sh nginx -g "daemon off;"

@@ -330,7 +330,7 @@ async def handle(request: web.Request) -> web.StreamResponse:
             filters = json.loads(request.rel_url.query.get("filters", "{}"))
         except json.JSONDecodeError:
             return web.json_response({"message": "invalid list filters"}, status=400)
-        allowed_keys = {"all", "filters", "limit", "size"}
+        allowed_keys = {"all", "filters", "limit", "size", "trunc_cmd"}
         if set(request.rel_url.query) - allowed_keys:
             return web.json_response({"message": "container list query denied"}, status=403)
         if not isinstance(filters, dict) or set(filters) != {"label"}:
