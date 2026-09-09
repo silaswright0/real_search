@@ -364,11 +364,13 @@ async def handle(request: web.Request) -> web.StreamResponse:
     unix = UnixConnector(path=DOCKER_SOCK)
     url = f"http://docker{path}{qs}"
     headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
-    needs_owner_check = (not CREATE_RE.match(path)) and bool(
-        CONTAINER_GET_RE.match(path)
-        or CONTAINER_MUTATE_RE.match(path)
-        or CONTAINER_DEL_RE.match(path)
-    )
+    needs_owner_check = False
+    if request.method == "GET" and CONTAINER_GET_RE.match(path):
+        needs_owner_check = True
+    elif request.method == "POST" and CONTAINER_MUTATE_RE.match(path):
+        needs_owner_check = True
+    elif request.method == "DELETE" and CONTAINER_DEL_RE.match(path):
+        needs_owner_check = True
     async with ClientSession(connector=unix) as http:
         if NETWORK_CONNECT_RE.match(path) and request.method == "POST":
             if request.rel_url.query:

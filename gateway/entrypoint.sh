@@ -18,22 +18,11 @@ fi
   done
 ) &
 
-# Read-only rootfs + cap_drop ALL: nginx cannot mkdir on a 0700 tmpfs it does
-# not own, and root cannot write one it does not own without DAC_OVERRIDE.
-# Mount cache as root, create the temp dirs, then hand them to nginx (101).
-mkdir -p \
-  /var/cache/nginx/client_temp \
-  /var/cache/nginx/proxy_temp \
-  /var/cache/nginx/fastcgi_temp \
-  /var/cache/nginx/uwsgi_temp \
-  /var/cache/nginx/scgi_temp
-# chmod while still root-owned. After chown, cap_drop has no CAP_FOWNER.
-chmod 0700 /var/cache/nginx \
-  /var/cache/nginx/client_temp \
-  /var/cache/nginx/proxy_temp \
-  /var/cache/nginx/fastcgi_temp \
-  /var/cache/nginx/uwsgi_temp \
-  /var/cache/nginx/scgi_temp
-chown -R nginx:nginx /var/cache/nginx
+# Temp files go on the 1777 /tmp tmpfs. Do not chown /var/cache/nginx to
+# 0700 nginx: nginx still starts as root and cannot mkdir inside that.
+mkdir -p /tmp/nginx_client_temp /tmp/nginx_proxy_temp \
+  /tmp/nginx_fastcgi_temp /tmp/nginx_uwsgi_temp /tmp/nginx_scgi_temp
+chown nginx:nginx /tmp/nginx_client_temp /tmp/nginx_proxy_temp \
+  /tmp/nginx_fastcgi_temp /tmp/nginx_uwsgi_temp /tmp/nginx_scgi_temp
 
 exec /docker-entrypoint.sh nginx -g "daemon off;"
