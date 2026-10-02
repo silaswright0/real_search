@@ -3,11 +3,18 @@
 
 use_default_settings:
   engines:
+    # Wikidata is not listed: its SPARQL init gets HTTP 403 through Tor and
+    # the engine is then unregistered. It also only produces an infobox.
     keep_only:
       - duckduckgo
       - brave
+      - startpage
+      - mojeek
+      - mwmbl
+      - wiby
+      - encyclosearch
+      - searchmysite
       - wikipedia
-      - wikidata
 
 general:
   instance_name: "real search"
@@ -28,6 +35,31 @@ server:
   image_proxy: false
   method: "POST"
 
+# keep_only does not flip an engine's disabled flag or its display type.
+engines:
+  - name: wikipedia
+    # The default is infobox-only. This UI renders the normal result list.
+    display_type: ["list"]
+  - name: mojeek
+    disabled: false
+    timeout: 15.0
+  - name: startpage
+    timeout: 15.0
+  # Independent indexes with no API key. They return ordinary url/title hits
+  # and do not use the bot blockers that refuse Tor exits.
+  - name: mwmbl
+    disabled: false
+    timeout: 15.0
+  - name: wiby
+    disabled: false
+    timeout: 15.0
+  - name: encyclosearch
+    disabled: false
+    timeout: 15.0
+  - name: searchmysite
+    disabled: false
+    timeout: 15.0
+
 valkey:
   # Overwritten by ${SEARXNG_VALKEY_URL}, which must include the Valkey password.
   url: valkey://:must-be-overridden-by-SEARXNG_VALKEY_URL@valkey:6379/0
@@ -41,7 +73,9 @@ outgoing:
   # IsolateSOCKSAuth credentials per connection, which is the per-query circuit.
   enable_http2: false
   pool_connections: 8
-  pool_maxsize: 1
+  # Parallel one-shot SOCKS connections. keepalive_expiry stays 0 so a
+  # connection is not reused; the gate still mints a circuit per connection.
+  pool_maxsize: 8
   keepalive_expiry: 0.0
   proxies:
     all://: socks5h://searxng:circuit-isolation@172.28.0.2:9050

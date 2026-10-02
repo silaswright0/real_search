@@ -164,7 +164,10 @@ def _dispatch(conn: socket.socket) -> None:
     if _allowed(peer, SANDBOX_ALLOW):
         _handle(conn, False, SANDBOX_ALLOW)
         return
-    print(f"socks-gate reject peer={peer}", flush=True)
+    # The healthcheck opens 127.0.0.1:9050 and closes. It is not a client.
+    # Loopback still gets no circuit.
+    if peer != "127.0.0.1":
+        print(f"socks-gate reject peer={peer}", flush=True)
     conn.close()
 
 

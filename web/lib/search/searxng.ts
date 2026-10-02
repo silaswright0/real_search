@@ -5,24 +5,64 @@ import type {
   SearchResult,
 } from "@/lib/search/types";
 
+type SearxngLink = {
+  url?: string;
+};
+
 type SearxngHit = {
   url?: string;
   title?: string;
   content?: string;
   engine?: string;
   engines?: string[];
+  infobox?: string;
+  urls?: SearxngLink[];
 };
 
 type SearxngPayload = {
   results?: SearxngHit[];
+  unresponsive_engines?: unknown;
 };
 
 function searxngBaseUrl(): string {
   return process.env.SEARXNG_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
 }
 
+const ENGINE_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,40}$/;
+
+function httpUrl(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function unresponsiveEngines(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const names = new Set<string>();
+  for (const item of value) {
+    const raw = Array.isArray(item) ? item[0] : undefined;
+    if (typeof raw === "string" && ENGINE_NAME.test(raw)) {
+      names.add(raw);
+    }
+  }
+  return [...names];
+}
+
 function mapHit(hit: SearxngHit, mode: SearchQuery["mode"]): SearchResult | null {
-  if (!hit.url || !hit.title) {
+  const url = httpUrl(hit.url) ?? httpUrl(hit.urls?.find((link) => link.url)?.url);
+  const title = hit.title || hit.infobox;
+  if (!url || !title) {
     return null;
   }
 
@@ -31,8 +71,8 @@ function mapHit(hit: SearxngHit, mode: SearchQuery["mode"]): SearchResult | null
     (hit.engine ? [hit.engine] : []);
 
   return {
-    title: hit.title,
-    url: hit.url,
+    title,
+    url,
     snippet: hit.content ?? "",
     engines,
     mode,
@@ -75,6 +115,18 @@ export const searxngProvider: SearchProvider = {
       const results = (payload.results ?? [])
         .map((hit) => mapHit(hit, mode))
         .filter((hit): hit is SearchResult => hit !== null);
+      const failed = unresponsiveEngines(payload.unresponsive_engines);
+
+      if (results.length === 0 && failed.length > 0) {
+        return {
+          query: q,
+          mode,
+          page: pageno,
+          results,
+          status: "error",
+          message: `No engine answered (${failed.join(", ")})`,
+        };
+      }
 
       return {
         query: q,
